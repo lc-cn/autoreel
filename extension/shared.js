@@ -20,7 +20,7 @@ export const PLATFORMS = {
   },
 };
 export const ORDER = ["douyin", "channels", "kuaishou"];
-// 频道列表不再写死：插件从仓库 main 分支读取 autoclip.config.json 和 channels/<id>/channel.json。
+// 频道列表不再写死：插件从仓库默认分支读取 autoclip.config.json 和 channels/<id>/channel.json。
 // 每期成品的分支名：clip-<日期>-<频道id>
 export const channelTag = (date, id) => `clip-${date}-${id}`;
 export const MAX_ATTEMPTS = 3;

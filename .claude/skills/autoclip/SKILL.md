@@ -5,7 +5,7 @@ description: AutoClip 自动成片流水线：找方向 → 写文案 → 配音
 
 # AutoClip · 自动成片
 
-全程用中文。本仓库同时也是中转仓库：`main` 分支放工具和频道定义，每期成品推送到 `clip-<日期>-<频道id>` 分支，用户 Chrome 里的 AutoClip 插件会自动下载并发布。
+全程用中文。本仓库同时也是中转仓库：默认分支（main 或 master）放工具和频道定义，每期成品推送到 `clip-<日期>-<频道id>` 分支，用户 Chrome 里的 AutoClip 插件会自动下载并发布。
 
 ## 参数
 
@@ -14,7 +14,7 @@ description: AutoClip 自动成片流水线：找方向 → 写文案 → 配音
 
 ## 第 0 步：准备
 
-1. 仓库根目录记为 `$REPO`（用 `git rev-parse --show-toplevel` 取得）。依次执行 `git -C $REPO fetch -q origin main`、`git -C $REPO checkout -qf main`、`git -C $REPO reset -q --hard FETCH_HEAD`。
+1. 仓库根目录记为 `$REPO`（用 `git rev-parse --show-toplevel` 取得）。取默认分支名：`DEF=$(git -C $REPO remote show origin | sed -n 's/.*HEAD branch: //p')`。然后依次执行 `git -C $REPO fetch -q origin $DEF`、`git -C $REPO checkout -qf $DEF`、`git -C $REPO reset -q --hard FETCH_HEAD`。
 2. 读取以下文件：
    - `$REPO/autoclip.config.json`：全局配置（配音、可信来源、分类池）
    - `$REPO/channels/<id>/channel.json`：频道设置（条数、每条字数、时长上限、话题、`schedule.days_ahead`）
@@ -68,9 +68,9 @@ cd $W/proj && export HYPERFRAMES_NO_TELEMETRY=1 DO_NOT_TRACK=1 && $HF lint && $H
 bash $REPO/tools/push_clip.sh <id> <YYYY-MM-DD> $W/out.mp4 $W/发布信息.json $W/抖音文案.txt
 ```
 
-这个脚本只推送这 3 个文件，不切换分支，也不改动 main。不要删除任何分支，旧分支由插件清理。
+这个脚本只推送这 3 个文件，不切换分支，也不改动默认分支。不要删除任何分支，旧分支由插件清理。
 
-如果 brief 要求在 `inputs/` 里把已用过的素材标记为「已做」，推送成功后只修改那一个文件，提交到 main。提交信息写成 `autoclip: <频道> <日期> 已做`。
+如果 brief 要求在 `inputs/` 里把已用过的素材标记为「已做」，推送成功后只修改那一个文件，提交并推送到默认分支 `$DEF`。提交信息写成 `autoclip: <频道> <日期> 已做`。
 
 ## 第 5 步：汇报
 

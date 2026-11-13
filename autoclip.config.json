@@ -1,5 +1,5 @@
 {
-  "_说明": "AutoClip 全局配置。改完提交到 main 分支即可生效。频道本身的设置在 channels/<频道>/channel.json。",
+  "_说明": "AutoClip 全局配置。改完提交到仓库默认分支即可生效。频道本身的设置在 channels/<频道>/channel.json。",
   "account": { "name": "我的账号" },
   "channels": ["kuaibao", "jiangtou", "lishi"],
   "_可用频道": "kuaibao 热点快报 / jiangtou 一条讲透 / lishi 历史上的今天 / lengzhishi 一分钟冷知识 / dushu 一分钟读本书 / haowu 好物推荐（需要你在 inputs/haowu 放产品资料）",

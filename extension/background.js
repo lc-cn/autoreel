@@ -140,7 +140,7 @@ async function writeStatus(tag, platform, status, detail = "", attempts = 0) {
   }
 }
 async function cleanup(today) {
-  // 只删除「clip-日期-频道」格式、并且超过 7 天的分支；其他任何分支（main、你自己的分支）一律不碰
+  // 只删除「clip-日期-频道」格式、并且超过 7 天的分支；其他任何分支（默认分支、你自己的分支）一律不碰
   const cutoff = new Date(Date.parse(today) - 7 * 864e5).toISOString().slice(0, 10);
   try {
     const heads = await (await gh("git/matching-refs/heads/clip-")).json();
@@ -644,7 +644,7 @@ async function getChannels(force = false) {
   const { channels } = await chrome.storage.local.get("channels");
   if (!force && channels && Date.now() - channels.at < 30 * 60000) return channels.list;
   try {
-    const raw = (p) => gh(`contents/${p}?ref=main`, { accept: "application/vnd.github.raw" }).then((r) => r.json());
+    const raw = (p) => gh(`contents/${p}`, { accept: "application/vnd.github.raw" }).then((r) => r.json()); // 不带 ref = 仓库默认分支
     const cfg = await raw("autoclip.config.json");
     const list = [];
     for (const id of cfg.channels || []) {
