@@ -1,0 +1,31 @@
+{
+  "_说明": "AutoClip 全局配置。改完提交到 main 分支即可生效。频道本身的设置在 channels/<频道>/channel.json。",
+  "account": { "name": "我的账号" },
+  "channels": ["kuaibao", "jiangtou", "lishi"],
+  "_可用频道": "kuaibao 热点快报 / jiangtou 一条讲透 / lishi 历史上的今天 / lengzhishi 一分钟冷知识 / dushu 一分钟读本书 / haowu 好物推荐（需要你在 inputs/haowu 放产品资料）",
+  "voice": {
+    "provider": "auto",
+    "_provider说明": "auto：有火山引擎配置就用火山引擎，否则用 CosyVoice，再不行用 sherpa；也可以直接写 volcengine / cosyvoice / sherpa",
+    "min_speed": 1.05,
+    "volcengine": {
+      "app_id": "",
+      "speaker": "",
+      "resource_id": "seed-tts-1.0",
+      "via_proxy": false,
+      "_说明": "火山引擎控制台 → 豆包语音 → 语音合成，开通后填 app_id 和音色 ID（speaker）。密钥不要写在这里：Claude Code 云端用「网络密钥」存，请求头名 X-Api-Access-Key，并把 via_proxy 改为 true"
+    },
+    "cosyvoice": {
+      "model": "CosyVoice-300M-SFT",
+      "speaker": "中文女",
+      "prompt_wav": "",
+      "prompt_text": "",
+      "_说明": "默认用内置音色（中文女 / 中文男）。想用自己的声音：model 改 CosyVoice2-0.5B，prompt_wav 填仓库里一段 5–15 秒的录音路径，prompt_text 填录音的文字。只能用你有权使用的声音"
+    },
+    "sherpa": { "kind": "kokoro", "speaker": 3 }
+  },
+  "content": {
+    "categories": ["国际", "国内", "外交", "财经", "科技", "体育", "娱乐", "社会", "健康", "教育", "环境", "军事", "汽车", "文化"],
+    "trusted_sources": ["新华社", "央视", "澎湃新闻", "财新", "中新网", "路透社", "美联社", "BBC", "NPR"]
+  },
+  "publish": { "declaration": "内容由AI生成" }
+}

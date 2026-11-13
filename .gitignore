@@ -1,0 +1,7 @@
+tools/models/
+tools/cosyvoice/
+tools/node_modules/
+tools/package*.json
+**/__pycache__/
+*.mp4
+.DS_Store

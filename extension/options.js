@@ -1,0 +1,388 @@
+import { DEFAULTS, PLATFORMS, EVENTS, VARS, PRESETS, DEFAULT_TEXT, newChannel, buildVars, buildRequest } from "./shared.js";
+
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+const LETTER = { douyin: "抖", channels: "视", kuaishou: "快" };
+const NOTE = { douyin: "创作者中心 creator.douyin.com", channels: "视频号助手 channels.weixin.qq.com", kuaishou: "快手创作者服务平台 cp.kuaishou.com" };
+const SAMPLE = { title: "抖音已发布「热点快报」", message: "热点快报11月12日｜渤海超深层获突破", platform: "抖音", platformKey: "douyin", slot: "热点快报", videoTitle: "热点快报11月12日｜渤海超深层获突破" };
+let S = null; // 正在编辑的设置
+let login = {};
+let dirty = false;
+
+function toast(t) {
+  const el = $("toast");
+  el.textContent = t;
+  el.classList.add("show");
+  setTimeout(() => el.classList.remove("show"), 2000);
+}
+function markDirty() {
+  dirty = true;
+  $("saveState").textContent = "有未保存的修改";
+  $("saveState").className = "state dirty";
+}
+const nowStamp = () => new Intl.DateTimeFormat("sv-SE", { timeZone: "Asia/Shanghai", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }).format(new Date());
+
+// ───── 标签页 ─────
+function showTab() {
+  const t = (location.hash || "#basic").slice(1);
+  document.querySelectorAll("nav a").forEach((a) => a.classList.toggle("on", a.dataset.tab === t));
+  document.querySelectorAll(".panel").forEach((p) => p.classList.toggle("on", p.id === `p-${t}`));
+  if (t === "logs") renderLogs();
+}
+window.addEventListener("hashchange", showTab);
+
+// ───── 读取 ─────
+async function load() {
+  const st = await chrome.storage.local.get(["settings", "login"]);
+  const raw = st.settings || {};
+  login = st.login || {};
+  S = structuredClone(DEFAULTS);
+  Object.assign(S, raw);
+  S.platforms = { ...DEFAULTS.platforms, ...(raw.platforms || {}) };
+  S.times = { ...(raw.times || {}) };
+  S.browserNotify = { ...DEFAULTS.browserNotify, ...(raw.browserNotify || {}) };
+  S.textTemplate = raw.textTemplate || DEFAULT_TEXT;
+  S.channels = Array.isArray(raw.channels) ? raw.channels : [];
+  if (!raw.channels && raw.webhook && raw.webhook.url) {
+    const fmt = { wecom: "wecom", feishu: "feishu", dingtalk: "dingtalk" }[raw.webhook.format] || "generic";
+    const ch = newChannel(fmt);
+    Object.assign(ch, { url: raw.webhook.url, events: { ...ch.events, ...(raw.webhook.events || {}) } });
+    S.channels = [ch];
+  }
+  $("repo").value = S.repo;
+  $("token").value = S.token;
+  await renderTimes();
+  $("ka").value = S.keepAliveHours;
+  delete S.mirrors;
+  delete S.mirrorMode;
+  renderRoutes();
+  $("auto").checked = !S.paused;
+  $("autoTxt").textContent = S.paused ? "已暂停" : "已开启";
+  $("textTpl").value = S.textTemplate;
+  renderPlatforms();
+  renderBrowserEvents();
+  renderVars();
+  renderPreview();
+  renderChannels();
+}
+
+// ───── 平台 ─────
+function renderPlatforms() {
+  const box = $("platList");
+  box.innerHTML = "";
+  for (const [k, P] of Object.entries(PLATFORMS)) {
+    const on = !!S.platforms[k];
+    const l = login[k];
+    const status = !on ? '<span class="pill plain">已停用</span>' : !l ? '<span class="pill">未检查</span>' : l.ok ? '<span class="pill ok">已登录</span>' : '<span class="pill bad">登录失效</span>';
+    const row = document.createElement("div");
+    row.className = `plat${on ? "" : " disabled"}`;
+    row.innerHTML = `<span class="badge ${k}">${LETTER[k]}</span><div class="meta"><b>${P.name}</b> ${status}<div>${NOTE[k]}${l && on ? ` · ${l.time.slice(5, 16)} 检查` : ""}</div></div>`;
+    const btn = document.createElement("button");
+    btn.className = "btn sm";
+    btn.type = "button";
+    btn.textContent = "扫码登录";
+    btn.disabled = !on;
+    btn.title = on ? "" : "先开启这个平台";
+    btn.onclick = () => chrome.runtime.sendMessage({ type: "login", platform: k });
+    const sw = document.createElement("label");
+    sw.className = "switch";
+    sw.innerHTML = `<input type="checkbox" ${on ? "checked" : ""} aria-label="开启${P.name}" /><span></span>`;
+    sw.querySelector("input").onchange = (e) => {
+      S.platforms[k] = e.target.checked;
+      markDirty();
+      renderPlatforms();
+    };
+    row.append(btn, sw);
+    box.appendChild(row);
+  }
+}
+
+// ───── 浏览器通知 ─────
+function renderBrowserEvents() {
+  $("bnEvents").innerHTML = Object.entries(EVENTS).map(([k, e]) => `<label class="check"><input type="checkbox" data-ev="${k}" ${S.browserNotify[k] !== false ? "checked" : ""}/> ${e.emoji} ${e.name}</label>`).join("");
+  $("bnEvents").querySelectorAll("input").forEach((i) => (i.onchange = () => {
+    S.browserNotify[i.dataset.ev] = i.checked;
+    markDirty();
+  }));
+}
+
+// ───── 模板变量 ─────
+let lastFocus = null;
+document.addEventListener("focusin", (e) => {
+  if (e.target.matches("textarea, input[type=url], input[type=text]")) lastFocus = e.target;
+});
+function insertVar(name) {
+  const el = lastFocus && lastFocus.isConnected ? lastFocus : $("textTpl");
+  const tok = `{{${name}}}`;
+  const a = el.selectionStart ?? el.value.length, b = el.selectionEnd ?? el.value.length;
+  el.value = el.value.slice(0, a) + tok + el.value.slice(b);
+  el.focus();
+  el.selectionStart = el.selectionEnd = a + tok.length;
+  el.dispatchEvent(new Event("input", { bubbles: true }));
+}
+function renderVars() {
+  $("varChips").innerHTML = VARS.filter(([k]) => k !== "text").map(([k, d]) => `<button class="var" type="button" title="${esc(d)}" data-v="${k}">{{${k}}}</button>`).join("");
+  $("varChips").querySelectorAll(".var").forEach((b) => (b.onclick = () => insertVar(b.dataset.v)));
+  $("varTable").innerHTML = VARS.map(([k, d]) => `<tr><td>{{${k}}}</td><td>${esc(d)}</td></tr>`).join("");
+}
+function renderPreview() {
+  const v = buildVars("published", SAMPLE, S.textTemplate, nowStamp());
+  $("textPreview").textContent = v.text;
+}
+$("textTpl").addEventListener("input", (e) => {
+  S.textTemplate = e.target.value;
+  markDirty();
+  renderPreview();
+  document.querySelectorAll(".ch.open").forEach((c) => c._preview && c._preview());
+});
+
+// ───── 推送渠道 ─────
+function renderChannels() {
+  const box = $("chList");
+  box.innerHTML = "";
+  if (!S.channels.length) box.innerHTML = '<div class="muted" style="margin-top:10px">还没有推送渠道。在下面选择一种类型添加。</div>';
+  S.channels.forEach((ch, idx) => box.appendChild(channelCard(ch, idx)));
+}
+function channelCard(ch, idx) {
+  const el = document.createElement("div");
+  el.className = "ch";
+  const preset = PRESETS[ch.preset] || PRESETS.generic;
+  el.innerHTML = `
+    <div class="ch-h">
+      <label class="switch" title="启用 / 停用"><input type="checkbox" class="en" ${ch.enabled ? "checked" : ""} /><span></span></label>
+      <span class="nm">${esc(ch.name)}</span><span class="tp">${ch.name === preset.label ? "" : esc(preset.label)}</span><span class="sp"></span>
+      <button class="btn sm test" type="button">发送测试</button>
+      <button class="btn sm ghost tog" type="button">编辑</button>
+    </div>
+    <div class="ch-b">
+      ${preset.tip ? `<div class="help muted" style="margin-top:10px">💡 ${esc(preset.tip)}</div>` : ""}
+      <div class="grid2">
+        <label class="field"><span class="label">名称</span><input type="text" data-k="name" value="${esc(ch.name)}" /></label>
+        <label class="field"><span class="label">推送事件</span><span class="evs">${Object.entries(EVENTS).map(([k, e]) => `<label class="check"><input type="checkbox" data-ev="${k}" ${ch.events[k] ? "checked" : ""}/> ${e.name}</label>`).join("")}</span></label>
+      </div>
+      <label class="field"><span class="label">地址</span><input type="url" data-k="url" value="${esc(ch.url)}" /></label>
+      <div class="grid2">
+        <label class="field"><span class="label">请求方式</span><select data-k="method"><option>POST</option><option>PUT</option><option>GET</option></select></label>
+        <label class="field"><span class="label">内容类型</span><select data-k="contentType"><option value="json">JSON</option><option value="form">表单（x-www-form-urlencoded）</option><option value="text">纯文本</option></select></label>
+      </div>
+      <label class="field"><span class="label">请求头（JSON，可留空）</span><textarea data-k="headers" rows="2" placeholder='{"Authorization": "Bearer xxx"}'>${esc(ch.headers)}</textarea></label>
+      <label class="field"><span class="label">消息体模板</span><textarea data-k="body" rows="5">${esc(ch.body)}</textarea></label>
+      <div class="vars">${VARS.map(([k, d]) => `<button class="var" type="button" title="${esc(d)}" data-v="${k}">{{${k}}}</button>`).join("")}</div>
+      <label class="field"><span class="label">预览（示例事件：发布成功）</span><div class="preview pv"></div></label>
+      <div class="err"></div><div class="res"></div>
+      <div style="display:flex;gap:8px;margin-top:12px"><button class="btn sm danger del" type="button">删除此渠道</button></div>
+    </div>`;
+  el.querySelector('[data-k="method"]').value = ch.method || "POST";
+  el.querySelector('[data-k="contentType"]').value = ch.contentType || "json";
+  const preview = () => {
+    const vars = buildVars("published", SAMPLE, S.textTemplate, nowStamp());
+    try {
+      const r = buildRequest(ch, vars);
+      el.querySelector(".pv").textContent = `${r.method} ${r.url}\n${Object.entries(r.headers).map(([a, b]) => `${a}: ${b}`).join("\n")}${r.body ? `\n\n${r.body}` : ""}`;
+      el.querySelector(".err").textContent = "";
+    } catch (e) {
+      el.querySelector(".pv").textContent = "";
+      el.querySelector(".err").textContent = `模板有误：${e.message}（JSON 里的变量要写在引号内，例如 "{{text}}"）`;
+    }
+  };
+  el._preview = preview;
+  el.querySelector(".ch-h").onclick = (e) => {
+    if (e.target.closest(".switch, .test")) return;
+    el.classList.toggle("open");
+    el.querySelector(".tog").textContent = el.classList.contains("open") ? "收起" : "编辑";
+    if (el.classList.contains("open")) preview();
+  };
+  el.querySelector(".en").onchange = (e) => {
+    ch.enabled = e.target.checked;
+    markDirty();
+  };
+  el.querySelectorAll("[data-k]").forEach((inp) => inp.addEventListener("input", () => {
+    ch[inp.dataset.k] = inp.value;
+    if (inp.dataset.k === "name") el.querySelector(".nm").textContent = inp.value;
+    markDirty();
+    preview();
+  }));
+  el.querySelectorAll("[data-ev]").forEach((i) => (i.onchange = () => {
+    ch.events[i.dataset.ev] = i.checked;
+    markDirty();
+  }));
+  el.querySelectorAll(".var").forEach((b) => (b.onclick = () => insertVar(b.dataset.v)));
+  el.querySelector(".del").onclick = () => {
+    if (!confirm(`删除推送渠道「${ch.name}」？`)) return;
+    S.channels.splice(idx, 1);
+    markDirty();
+    renderChannels();
+  };
+  el.querySelector(".test").onclick = async () => {
+    const res = el.querySelector(".res");
+    if (!(await grant([ch]))) return (res.textContent = "没有授权访问该地址，无法发送");
+    res.textContent = "发送中…";
+    const r = await chrome.runtime.sendMessage({ type: "testChannel", channel: ch, textTemplate: S.textTemplate });
+    res.innerHTML = r && r.ok ? `<span class="pill ok">发送成功</span> <span class="muted">${esc((r.text || "").slice(0, 160))}</span>` : `<span class="pill bad">发送失败${r && r.status ? ` · HTTP ${r.status}` : ""}</span> <span class="muted">${esc((r && r.text) || "")}</span>`;
+    if (!el.classList.contains("open")) el.querySelector(".ch-h").click();
+  };
+  return el;
+}
+$("presetSel").innerHTML = Object.entries(PRESETS).map(([k, p]) => `<option value="${k}">${esc(p.label)}</option>`).join("");
+$("addCh").onclick = () => {
+  const ch = newChannel($("presetSel").value);
+  S.channels.push(ch);
+  markDirty();
+  renderChannels();
+  const cards = document.querySelectorAll(".ch");
+  cards[cards.length - 1].querySelector(".ch-h").click();
+};
+
+// ───── 下载线路 ─────
+const ROUTES = [["direct_auth", "直连 GitHub（令牌认证）", "支持断点续传"], ["api", "GitHub API", "不支持续传，速度通常更快"]];
+async function renderRoutes() {
+  const { routeTest, routeRank = {} } = await chrome.storage.local.get(["routeTest", "routeRank"]);
+  const res = Object.fromEntries(((routeTest && routeTest.results) || []).map((x) => [x.key, x]));
+  const order = ROUTES.slice().sort((a, b) => (routeRank[b[0]] ?? 0) - (routeRank[a[0]] ?? 0)).map((r) => r[0]);
+  $("routeList").innerHTML = ROUTES.map(([k, t, n]) => {
+    const r = res[k];
+    const pill = !r ? '<span class="pill">未测速</span>' : r.ok ? `<span class="pill ok">${r.speed}</span>` : `<span class="pill bad">不可用</span><span class="muted" style="font-size:12px">${esc(r.error)}</span>`;
+    const first = routeTest && order[0] === k && r && r.ok ? '<span class="pill brand plain">优先使用</span>' : "";
+    return `<div class="mopt" style="cursor:default"><span><span class="t">${t}</span> <span class="n">${n}</span></span><span class="r">${first}${pill}</span></div>`;
+  }).join("");
+  $("routeTestAt").textContent = routeTest ? `上次测速：${routeTest.at.slice(5, 16)}` : "还没有测过速，建议测一次";
+}
+$("testRoutes").onclick = async () => {
+  $("routeTestAt").textContent = "测速中，每条线路最多 60 秒…";
+  const r = await chrome.runtime.sendMessage({ type: "testRoutes" });
+  if (!r || r.error) {
+    await renderRoutes();
+    return toast((r && r.error) || "测速失败");
+  }
+  await renderRoutes();
+  toast(r.results.some((x) => x.ok) ? "测速完成，插件会优先用更合适的线路" : "两条线路都不可用，请把测速结果截图发给 Claude");
+};
+
+// ───── 频道与发布时间 ─────
+async function renderTimes() {
+  const { channels } = await chrome.storage.local.get("channels");
+  const list = (channels && channels.list) || [];
+  $("timeList").innerHTML = list.length
+    ? list.map((c) => `<label class="field"><span class="label">${esc(c.name)}</span><input type="time" data-ch="${esc(c.key)}" data-def="${esc(c.notBefore)}" value="${esc(S.times[c.key] || c.notBefore)}" /><span class="help">频道默认 ${esc(c.notBefore)}</span></label>`).join("")
+    : '<div class="muted">还没有读取到频道。先填好仓库和令牌并保存，再点「刷新频道列表」。</div>';
+  $("timeList").querySelectorAll("input").forEach((i) => i.addEventListener("input", markDirty));
+  $("chInfo").textContent = channels ? `共 ${list.length} 个频道 · ${new Date(channels.at).toLocaleString("zh-CN", { hour12: false })} 读取` : "";
+}
+$("refreshCh").onclick = async () => {
+  $("chInfo").textContent = "读取中…";
+  const r = await chrome.runtime.sendMessage({ type: "refreshChannels" });
+  await renderTimes();
+  toast(r && r.list && r.list.length ? `读取到 ${r.list.length} 个频道` : "没有读取到频道，请检查仓库、令牌和 autoclip.config.json");
+};
+
+// ───── 备份与迁移 ─────
+$("exportCfg").onclick = async () => {
+  const { settings = {} } = await chrome.storage.local.get("settings");
+  const out = { ...settings, _kuaibao: 1 };
+  if (!$("exportTok").checked) delete out.token;
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([JSON.stringify(out, null, 2)], { type: "application/json" }));
+  a.download = `AutoClip-设置-${nowStamp().slice(0, 10)}.json`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+};
+$("importCfg").onclick = () => $("importFile").click();
+$("importFile").onchange = async (e) => {
+  const f = e.target.files[0];
+  if (!f) return;
+  try {
+    const cfg = JSON.parse(await f.text());
+    if (!cfg._kuaibao) throw new Error("不是本插件导出的设置文件");
+    delete cfg._kuaibao;
+    const { settings = {} } = await chrome.storage.local.get("settings");
+    if (!cfg.token) cfg.token = settings.token || ""; // 文件里没有令牌就保留现在的
+    await chrome.storage.local.set({ settings: cfg });
+    await load();
+    toast("设置已导入；推送渠道第一次发送前可能需要重新授权地址");
+  } catch (err) {
+    toast(`导入失败：${err.message}`);
+  }
+  e.target.value = "";
+};
+
+// 推送地址需要逐个授权（浏览器会弹窗确认一次）
+async function grant(chs, extra = []) {
+  const origins = [...new Set(chs.filter((c) => c.enabled !== false && /^https?:\/\//.test(c.url)).map((c) => {
+    try {
+      return new URL(c.url.replace(/\{\{[^}]+\}\}/g, "x")).origin + "/*";
+    } catch (_) {
+      return null;
+    }
+  }).filter(Boolean)), ...extra];
+  if (!origins.length) return true;
+  return chrome.permissions.request({ origins });
+}
+
+// ───── 基本设置输入 ─────
+["repo", "token", "ka"].forEach((id) => $(id).addEventListener("input", markDirty));
+$("auto").onchange = () => {
+  $("autoTxt").textContent = $("auto").checked ? "已开启" : "已暂停";
+  markDirty();
+};
+$("showTok").onclick = () => {
+  const t = $("token");
+  t.type = t.type === "password" ? "text" : "password";
+  $("showTok").textContent = t.type === "password" ? "显示" : "隐藏";
+};
+
+// ───── 保存 ─────
+$("save").onclick = async () => {
+  for (const ch of S.channels) {
+    try {
+      buildRequest(ch, buildVars("published", SAMPLE, S.textTemplate, nowStamp()));
+    } catch (e) {
+      location.hash = "#notify";
+      return toast(`渠道「${ch.name}」的模板有误，请检查`);
+    }
+  }
+  if (!(await grant(S.channels))) toast("部分推送地址没有授权，这些渠道将无法发送");
+  S.repo = $("repo").value.trim().replace(/^https:\/\/github\.com\//, "").replace(/\.git$/, "").replace(/\/$/, "");
+  S.token = $("token").value.trim();
+  S.times = {};
+  document.querySelectorAll("#timeList input[data-ch]").forEach((i) => {
+    if (i.value && i.value !== i.dataset.def) S.times[i.dataset.ch] = i.value;
+  });
+  S.keepAliveHours = Math.max(1, Math.min(24, parseInt($("ka").value, 10) || 6));
+  S.paused = !$("auto").checked;
+  const out = { ...S };
+  delete out.webhook; // 旧版字段，已迁移为推送渠道
+  await chrome.storage.local.set({ settings: out });
+  dirty = false;
+  $("saveState").textContent = `已保存 · ${nowStamp().slice(11, 16)}`;
+  $("saveState").className = "state";
+  toast("设置已保存");
+};
+window.addEventListener("beforeunload", (e) => {
+  if (dirty) e.preventDefault();
+});
+
+// ───── 日志 ─────
+async function renderLogs() {
+  const { logs = [] } = await chrome.storage.local.get("logs");
+  $("logAll").textContent = logs.slice().reverse().join("\n") || "暂无日志";
+}
+$("copyLog").onclick = async () => {
+  const { logs = [] } = await chrome.storage.local.get("logs");
+  await navigator.clipboard.writeText(logs.slice(-200).join("\n"));
+  toast("已复制最近 200 行，可以直接发给 Claude");
+};
+$("clearLog").onclick = async () => {
+  if (!confirm("清空运行日志？")) return;
+  await chrome.storage.local.set({ logs: [] });
+  renderLogs();
+};
+chrome.storage.onChanged.addListener((c) => {
+  if (c.login) {
+    login = c.login.newValue || {};
+    if (S) renderPlatforms();
+  }
+  if (c.logs && location.hash === "#logs") renderLogs();
+});
+
+await load();
+showTab();

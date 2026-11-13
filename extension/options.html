@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>AutoClip 设置</title>
+<link rel="stylesheet" href="ui.css" />
+<style>
+  .hero { background: linear-gradient(135deg, #4b3dff 0%, #8a3ffc 55%, #d04a8c 100%); color: #fff; }
+  .hero-in { max-width: 980px; margin: 0 auto; padding: 26px 20px 64px; display: flex; align-items: center; gap: 14px; }
+  .hero img { width: 52px; height: 52px; border-radius: 50%; box-shadow: 0 0 0 3px rgba(255,255,255,.5); }
+  .hero h1 { margin: 0; font-size: 21px; }
+  .hero p { margin: 2px 0 0; opacity: .88; font-size: 13px; }
+  .wrap { max-width: 980px; margin: -40px auto 0; padding: 0 20px 90px; display: grid; grid-template-columns: 190px 1fr; gap: 18px; }
+  nav { position: sticky; top: 16px; align-self: start; padding: 8px; }
+  nav a { display: flex; align-items: center; gap: 9px; padding: 9px 12px; border-radius: 9px; color: var(--ink-2); font-weight: 600; }
+  nav a:hover { background: var(--surface-2); }
+  nav a.on { background: var(--brand-soft); color: var(--brand); }
+  nav svg { width: 16px; height: 16px; flex: none; }
+  .panel { display: none; gap: 14px; }
+  .panel.on { display: grid; }
+  .card { padding: 18px 20px; }
+  .card > h2 { margin: 0 0 2px; font-size: 15px; }
+  .card > .desc { margin: 0 0 6px; color: var(--mute); font-size: 12.5px; }
+  .grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .pwd { display: flex; gap: 8px; }
+  .pwd input { flex: 1; }
+  .plat { display: flex; align-items: center; gap: 12px; padding: 14px 0; }
+  .plat + .plat { border-top: 1px solid var(--line); }
+  .plat .meta { flex: 1; }
+  .plat .meta b { font-size: 14px; }
+  .plat .meta div { color: var(--mute); font-size: 12px; }
+  .plat.disabled .badge { filter: grayscale(1); opacity: .5; }
+  .evs { display: flex; flex-wrap: wrap; gap: 8px 18px; margin-top: 6px; }
+  .vars { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .var { font: 11.5px var(--mono); padding: 3px 8px; border-radius: 7px; background: var(--brand-soft); color: var(--brand); border: none; cursor: pointer; }
+  .var:hover { filter: brightness(.95); }
+  .preview { margin-top: 8px; padding: 10px 12px; border-radius: 10px; background: var(--surface-2); border: 1px dashed var(--line); white-space: pre-wrap; font-size: 12.5px; }
+  .ch { border: 1px solid var(--line); border-radius: 12px; margin-top: 12px; background: var(--surface); }
+  .ch-h { display: flex; align-items: center; gap: 10px; padding: 12px 14px; cursor: pointer; }
+  .ch-h .nm { font-weight: 650; }
+  .ch-h .tp { color: var(--mute); font-size: 12px; }
+  .ch-h .sp { flex: 1; }
+  .ch-b { display: none; padding: 0 14px 14px; border-top: 1px solid var(--line); }
+  .ch.open .ch-b { display: block; }
+  .ch .err { color: var(--bad); font-size: 12px; margin-top: 6px; }
+  .ch .res { font-size: 12px; margin-top: 6px; }
+  .add { display: flex; gap: 8px; margin-top: 14px; }
+  .add select { max-width: 260px; }
+  table.vt { width: 100%; border-collapse: collapse; font-size: 12.5px; margin-top: 6px; }
+  table.vt td { padding: 6px 8px; border-top: 1px solid var(--line); }
+  table.vt td:first-child { font-family: var(--mono); color: var(--brand); white-space: nowrap; }
+  .savebar { position: fixed; left: 0; right: 0; bottom: 0; background: color-mix(in srgb, var(--surface) 92%, transparent); backdrop-filter: blur(8px); border-top: 1px solid var(--line); }
+  .savebar-in { max-width: 980px; margin: 0 auto; padding: 10px 20px; display: flex; align-items: center; gap: 12px; }
+  .savebar .state { color: var(--mute); font-size: 12.5px; }
+  .savebar .state.dirty { color: var(--warn); }
+  .mopts { display: grid; gap: 6px; margin-top: 8px; }
+  .mopt { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; cursor: pointer; background: var(--surface); }
+  .mopt:hover { background: var(--surface-2); }
+  .mopt.on { border-color: var(--brand); background: var(--brand-soft); }
+  .mopt input { accent-color: var(--brand); margin: 0; }
+  .mopt .t { font-weight: 600; }
+  .mopt .n { color: var(--mute); font-size: 12px; }
+  .mopt .r { margin-left: auto; display: flex; gap: 6px; align-items: center; }
+  .logbox { max-height: 560px; overflow: auto; padding: 10px 12px; border-radius: 10px; background: var(--surface-2); }
+  @media (max-width: 760px) {
+    .wrap { grid-template-columns: 1fr; }
+    nav { position: static; display: flex; overflow-x: auto; }
+    nav a { white-space: nowrap; }
+    .grid3, .grid2 { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="hero"><div class="hero-in"><img src="icons/128.png" alt="" /><div><h1>AutoClip 自动成片 · 设置</h1><p>每 5 分钟检查一次中转仓库，到点自动发布到已开启的平台。Chrome 开着即可。</p></div></div></div>
+<div class="wrap">
+  <nav class="card">
+    <a href="#basic" data-tab="basic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12h18M3 6h18M3 18h12"/></svg>基本设置</a>
+    <a href="#platforms" data-tab="platforms"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="14" rx="2"/><path d="M8 21h8"/></svg>发布平台</a>
+    <a href="#notify" data-tab="notify"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>消息推送</a>
+    <a href="#logs" data-tab="logs"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h6"/></svg>运行日志</a>
+  </nav>
+
+  <div>
+    <!-- 基本设置 -->
+    <div class="panel" id="p-basic">
+      <section class="card">
+        <h2>中转仓库</h2>
+        <p class="desc">云端每天把视频、文案、封面推送到这里，插件从这里取。</p>
+        <label class="field"><span class="label">GitHub 仓库</span><input type="text" id="repo" placeholder="你的用户名/你的仓库名" /></label>
+        <label class="field"><span class="label">GitHub 访问令牌</span>
+          <span class="pwd"><input type="password" id="token" placeholder="github_pat_…" autocomplete="off" /><button class="btn" type="button" id="showTok">显示</button></span>
+          <span class="help">需要对该仓库有 Contents 读写权限。令牌只保存在本机浏览器里。</span></label>
+      </section>
+      <section class="card">
+        <h2>下载线路</h2>
+        <p class="desc">插件按测速结果自动选择：能续传的「直连」和速度更快的「API」，哪条更合适先用哪条，失败自动换另一条。测一次就会记住。</p>
+        <div id="routeList" class="mopts"></div>
+        <div style="display:flex;gap:10px;align-items:center;margin-top:12px"><button class="btn primary" type="button" id="testRoutes">测速</button><span class="muted" style="font-size:12px" id="routeTestAt"></span></div>
+      </section>
+      <section class="card">
+        <h2>发布时间</h2>
+        <p class="desc">北京时间，不早于此时间发布；视频还没就绪会继续等。默认值来自仓库里各频道的 channel.json（schedule.publish），在这里改只影响本机。频道的增减在仓库的 autoclip.config.json 里改。00:00 表示视频到了就发。</p>
+        <div class="grid3" id="timeList"></div>
+        <div style="display:flex;gap:10px;align-items:center;margin-top:10px"><button class="btn sm" type="button" id="refreshCh">刷新频道列表</button><span class="help muted" id="chInfo"></span></div>
+      </section>
+      <section class="card">
+        <h2>备份与迁移</h2>
+        <p class="desc">导出全部设置（推送渠道、模板、发布时间等），换电脑或重装插件后导入即可。默认不包含 GitHub 令牌。</p>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+          <button class="btn" type="button" id="exportCfg">导出设置</button>
+          <label class="check"><input type="checkbox" id="exportTok" /> 包含 GitHub 令牌</label>
+          <button class="btn" type="button" id="importCfg">导入设置</button>
+          <input type="file" id="importFile" accept="application/json,.json" hidden />
+        </div>
+      </section>
+      <section class="card">
+        <h2>登录保活</h2>
+        <p class="desc">定时打开已开启平台的后台页面，检查并刷新登录状态。停用的平台不会被检查。</p>
+        <div class="grid2">
+          <label class="field"><span class="label">检查间隔（小时）</span><input type="number" id="ka" min="1" max="24" /></label>
+          <label class="field"><span class="label">自动发布</span><span class="check" style="height:36px"><label class="switch"><input type="checkbox" id="auto" /><span></span></label><span id="autoTxt"></span></span></label>
+        </div>
+      </section>
+    </div>
+
+    <!-- 发布平台 -->
+    <div class="panel" id="p-platforms">
+      <section class="card">
+        <h2>发布平台</h2>
+        <p class="desc">关闭的平台不会被任何操作触发：不发布、不检查登录、不打开页面、不发通知。</p>
+        <div id="platList"></div>
+      </section>
+    </div>
+
+    <!-- 消息推送 -->
+    <div class="panel" id="p-notify">
+      <section class="card">
+        <h2>浏览器通知</h2>
+        <p class="desc">在电脑右上角弹出。「需要验证」「登录失效」点通知可直接跳到处理页面。</p>
+        <div class="evs" id="bnEvents"></div>
+      </section>
+      <section class="card">
+        <h2>消息正文模板</h2>
+        <p class="desc">生成变量 <code>{{text}}</code> 的内容，各推送渠道默认都用它。点下面的变量插入到光标处。</p>
+        <textarea id="textTpl" rows="3"></textarea>
+        <div class="vars" id="varChips"></div>
+        <div class="preview" id="textPreview"></div>
+      </section>
+      <section class="card">
+        <h2>推送渠道</h2>
+        <p class="desc">可添加多个，每个渠道单独选择推送哪些事件。消息体是模板：<code>{{变量}}</code> 会按内容类型自动转义，写在 JSON 引号里即可；需要原样插入用 <code>{{变量|raw}}</code>。地址里也可以用变量（会做 URL 编码）。</p>
+        <div id="chList"></div>
+        <div class="add"><select id="presetSel"></select><button class="btn primary" type="button" id="addCh">添加渠道</button></div>
+      </section>
+      <section class="card">
+        <h2>可用变量</h2>
+        <table class="vt" id="varTable"></table>
+      </section>
+    </div>
+
+    <!-- 运行日志 -->
+    <div class="panel" id="p-logs">
+      <section class="card">
+        <div class="card-h" style="font-size:15px">运行日志<span class="sub"><button class="btn sm" id="copyLog">复制</button> <button class="btn sm danger" id="clearLog">清空</button></span></div>
+        <div class="logbox"><pre class="log" id="logAll"></pre></div>
+      </section>
+    </div>
+  </div>
+</div>
+<div class="savebar"><div class="savebar-in"><button class="btn primary" id="save">保存设置</button><span class="state" id="saveState">已是最新</span></div></div>
+<div class="toast" id="toast"></div>
+<script src="options.js" type="module"></script>
+</body>
+</html>

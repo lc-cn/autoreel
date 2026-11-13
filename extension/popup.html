@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>AutoClip</title>
+<link rel="stylesheet" href="ui.css" />
+<style>
+  body { width: 384px; }
+  header { position: relative; padding: 16px 16px 44px; color: #fff; background: linear-gradient(135deg, #4b3dff 0%, #8a3ffc 55%, #d04a8c 100%); overflow: hidden; }
+  header::after { content: ""; position: absolute; inset: 0; background: radial-gradient(circle at 85% -20%, rgba(255,255,255,.28), transparent 45%); pointer-events: none; }
+  .hrow { display: flex; align-items: center; gap: 11px; position: relative; z-index: 1; }
+  .avatar { width: 40px; height: 40px; border-radius: 50%; box-shadow: 0 0 0 2px rgba(255,255,255,.55); }
+  .ht b { display: block; font-size: 15.5px; letter-spacing: .3px; }
+  .ht span { font-size: 12px; opacity: .88; }
+  .icon-btn { margin-left: auto; width: 32px; height: 32px; border-radius: 9px; display: grid; place-items: center; background: rgba(255,255,255,.16); color: #fff; border: none; cursor: pointer; }
+  .icon-btn:hover { background: rgba(255,255,255,.26); }
+  .next { position: relative; z-index: 1; margin-top: 12px; display: flex; align-items: center; gap: 8px; font-size: 12.5px; }
+  .next .chip { padding: 3px 10px; border-radius: 999px; background: rgba(255,255,255,.18); font-weight: 600; }
+  main { padding: 0 12px 12px; margin-top: -30px; position: relative; z-index: 2; display: grid; gap: 10px; }
+  .card { padding: 12px 14px; }
+  .plat { display: flex; align-items: center; gap: 10px; padding: 8px 0; }
+  .plat + .plat { border-top: 1px solid var(--line); }
+  .plat .meta { flex: 1; min-width: 0; }
+  .plat .meta b { display: block; font-size: 13px; }
+  .plat .meta small { color: var(--mute); font-size: 11.5px; }
+  .off { margin-top: 6px; padding-top: 8px; border-top: 1px dashed var(--line); color: var(--mute); font-size: 12px; display: flex; justify-content: space-between; }
+  .slot { display: grid; grid-template-columns: 62px 1fr auto auto; align-items: center; gap: 8px; padding: 8px 0; }
+  .slot + .slot { border-top: 1px solid var(--line); }
+  .slot time { font: 600 12.5px var(--mono); color: var(--ink-2); white-space: nowrap; }
+  .slot .nm { font-weight: 600; }
+  .slot .st { display: flex; gap: 4px; flex-wrap: wrap; justify-content: flex-end; }
+  .actions { display: grid; grid-template-columns: 1.3fr 1fr 1fr; gap: 8px; }
+  .actions .btn { height: 34px; padding: 0 8px; }
+  .row-between { display: flex; align-items: center; justify-content: space-between; }
+  details summary { cursor: pointer; list-style: none; display: flex; align-items: center; font-weight: 650; }
+  details summary::-webkit-details-marker { display: none; }
+  details summary::after { content: "展开"; margin-left: auto; font-weight: 400; font-size: 12px; color: var(--brand); }
+  details[open] summary::after { content: "收起"; }
+  details pre { margin-top: 8px; max-height: 190px; overflow: auto; padding: 8px 10px; border-radius: 9px; background: var(--surface-2); }
+  .warnbar[hidden], .runbar[hidden], .check-list[hidden] { display: none; }
+  .runbar { padding: 11px 14px; display: grid; gap: 7px; }
+  .runbar .top { display: flex; align-items: center; gap: 8px; font-weight: 650; }
+  .runbar .stage { color: var(--ink-2); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .spin { width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--brand-soft); border-top-color: var(--brand); animation: sp 0.9s linear infinite; flex: none; }
+  @keyframes sp { to { transform: rotate(360deg); } }
+  .track { height: 5px; border-radius: 99px; background: var(--brand-soft); overflow: hidden; }
+  .track i { display: block; height: 100%; width: 30%; border-radius: 99px; background: linear-gradient(90deg, var(--brand), var(--brand-2)); animation: slide 1.4s ease-in-out infinite; }
+  @keyframes slide { 0% { transform: translateX(-100%); } 100% { transform: translateX(340%); } }
+  .check-list { padding: 11px 14px; display: grid; gap: 6px; font-size: 12.5px; }
+  .check-list .it { display: flex; align-items: center; gap: 8px; }
+  .check-list .it b { color: var(--warn); }
+  .check-list .it a, .check-list .it button { margin-left: auto; }
+  .slot .nm small { display: block; font-weight: 400; color: var(--mute); font-size: 11.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 170px; }
+  .slot .more { border: none; background: none; color: var(--mute); cursor: pointer; padding: 2px 4px; border-radius: 6px; font-size: 15px; line-height: 1; }
+  .slot .more:hover { background: var(--surface-2); color: var(--ink); }
+  .menu { position: fixed; z-index: 50; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; box-shadow: var(--shadow); padding: 4px; min-width: 150px; }
+  .menu button { display: block; width: 100%; text-align: left; border: none; background: none; color: var(--ink); font: inherit; padding: 7px 10px; border-radius: 7px; cursor: pointer; }
+  .menu button:hover { background: var(--surface-2); }
+  .menu button.danger { color: var(--bad); }
+  .warnbar { display: flex; gap: 8px; align-items: center; padding: 9px 12px; border-radius: 10px; background: var(--warn-soft); color: var(--warn); font-size: 12.5px; }
+</style>
+</head>
+<body>
+<header>
+  <div class="hrow">
+    <img class="avatar" src="icons/128.png" alt="" />
+    <div class="ht"><b>AutoClip</b><span>自动成片 · 自动发布</span></div>
+    <button class="icon-btn" id="openSettings" title="设置" aria-label="设置">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+    </button>
+  </div>
+  <div class="next"><span id="next" class="chip">加载中…</span><span id="pausedTag"></span></div>
+</header>
+<main>
+  <section class="card runbar" id="runbar" hidden>
+    <div class="top"><span class="spin"></span><span id="runTitle"></span></div>
+    <div class="track"><i></i></div>
+    <div class="stage" id="runStage"></div>
+  </section>
+  <section class="card check-list" id="checklist" hidden></section>
+  <section class="card">
+    <div class="card-h">平台账号<span class="sub" id="loginSub"></span></div>
+    <div id="plats"></div>
+  </section>
+  <section class="card">
+    <div class="card-h">今天的发布<span class="sub" id="today"></span></div>
+    <div id="slots"></div>
+  </section>
+  <div class="actions">
+    <button class="btn primary" id="run">立即运行</button>
+    <button class="btn" id="check">检查登录</button>
+    <button class="btn" id="reset" title="把今天失败的次数清零，便于重新尝试">重置失败</button>
+  </div>
+  <section class="card">
+    <div class="row-between">
+      <span class="card-h" style="margin:0">自动发布</span>
+      <label class="switch" title="关闭后不会自动发布，也不会自动检查登录"><input type="checkbox" id="autoSwitch" /><span></span></label>
+    </div>
+  </section>
+  <details class="card" style="padding:12px 14px">
+    <summary>运行日志</summary>
+    <pre class="log" id="logs"></pre>
+  </details>
+</main>
+<div class="toast" id="toast"></div>
+<script src="popup.js" type="module"></script>
+</body>
+</html>
