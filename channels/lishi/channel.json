@@ -2,6 +2,8 @@
   "id": "lishi",
   "name": "历史上的今天",
   "slogan": "一分钟回看历史",
+  "audience": "对历史感兴趣、喜欢涨知识的观众",
+  "tone": "讲故事的口吻：有画面感，点出这件事为什么值得记住，不做价值评判",
   "label": "这一天",
   "deco": "ON THIS<br />DAY",
   "src": "资料来源：公开史料",
@@ -15,6 +17,10 @@
   "say_chars": [
     60,
     80
+  ],
+  "say_total": [
+    200,
+    240
   ],
   "max_seconds": 75,
   "hashtags": [

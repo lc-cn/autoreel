@@ -2,6 +2,8 @@
   "id": "kuaibao",
   "name": "热点快报",
   "slogan": "一分钟看懂天下事",
+  "audience": "想快速了解当天大事的上班族、学生",
+  "tone": "新闻主播式播报：简洁、客观、节奏快，不加个人评论",
   "label": "本期涉及",
   "deco": "HOT<br />NEWS",
   "src": "信息来源：公开报道",
@@ -16,6 +18,10 @@
   "say_chars": [
     40,
     55
+  ],
+  "say_total": [
+    200,
+    280
   ],
   "max_seconds": 65,
   "hashtags": [

@@ -2,6 +2,8 @@
   "id": "jiangtou",
   "name": "一条讲透",
   "slogan": "一分钟讲透一条新闻",
+  "audience": "看了新闻想知道「为什么」的普通人",
+  "tone": "像懂行的朋友讲给你听：口语化，先结论后原因，讲清因果，不站队",
   "label": "分几点讲",
   "deco": "DEEP<br />DIVE",
   "src": "信息来源：公开报道",
@@ -15,6 +17,10 @@
   "say_chars": [
     50,
     70
+  ],
+  "say_total": [
+    200,
+    260
   ],
   "max_seconds": 80,
   "hashtags": [

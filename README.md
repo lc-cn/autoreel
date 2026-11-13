@@ -16,8 +16,9 @@
 | 一分钟冷知识 `lengzhishi` | 一个知识点讲明白 | 科普资料（至少 2 个来源印证） |
 | 一分钟读本书 `dushu` | 一本书的核心观点 | 你的书单 `inputs/dushu/书单.md` + 书评 |
 | 好物推荐 `haowu` | 一件产品的看点 | **只用你提供的资料** `inputs/haowu/` |
+| 每天一个成语 `chengyu` | 一个成语的出处、故事、用法 | 成语词典、典籍原文 |
 
-想做别的主题？复制一个频道文件夹，改 `channel.json`（名字、配色、条数、时长、发布时间）和 `brief.md`（怎么找方向、怎么写），在 `autoclip.config.json` 的 `channels` 里加上它就行。详见 [docs/新建频道.md](docs/新建频道.md)。
+想做别的主题？在 Claude Code 里对仓库说一句「**新建一个频道，讲 XX**」，`autoclip-channel` 技能会一步步引导你：调研同类账号和可信来源、定结构和语气、并排比较几套配色、自动校验、试做一期，最后启用并建好定时任务。也可以手动复制一个频道文件夹修改，详见 [docs/新建频道.md](docs/新建频道.md)。
 
 ## 工作原理
 
@@ -72,8 +73,9 @@ Claude Code 云端定时任务（每个频道每天一次）
 |---|---|
 | `channels/<频道>/` | 频道定义：`channel.json`（设置）+ `brief.md`（找方向、写文案的规则） |
 | `inputs/` | 需要你提供素材的频道（书单、产品资料） |
-| `.claude/skills/autoclip/` | 流水线技能（各频道通用） |
-| `tools/` | `gen_hf.py` 生成视频工程和文案、`tts.py` 配音、`make_cover.py` 封面、`push_clip.sh` 推送、`setup.sh` 安装 |
+| `.claude/skills/autoclip/` | 出片技能（各频道通用）：找方向 → 写文案 → 自查 → 配音 → 生成视频 → 推送 |
+| `.claude/skills/autoclip-channel/` | 频道管理技能：交互式新建、编辑、停用频道 |
+| `tools/` | `gen_hf.py` 生成视频工程和文案、`tts.py` 配音、`make_cover.py` 封面、`check_channel.py` 频道检查与预览、`palettes.json` 配色预设、`push_clip.sh` 推送、`setup.sh` 安装 |
 | `extension/` | Chrome 插件（Manifest V3） |
 | `prompts/` | 定时任务指令模板 |
 

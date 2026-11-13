@@ -2,6 +2,8 @@
   "id": "haowu",
   "name": "好物推荐",
   "slogan": "一分钟看懂一件好物",
+  "audience": "在做购买决策、想看清优缺点的消费者",
+  "tone": "真诚客观：讲清楚适合谁、不适合谁，不夸大，不用绝对化用语",
   "label": "看点",
   "deco": "GOOD<br />STUFF",
   "src": "资料来源：品牌官方资料",
@@ -16,13 +18,17 @@
     45,
     65
   ],
+  "say_total": [
+    180,
+    250
+  ],
   "max_seconds": 70,
   "hashtags": [
     "好物推荐",
     "种草"
   ],
   "schedule": {
-    "make": "17:37",
+    "make": "17:13",
     "publish": "18:00",
     "days_ahead": 0
   },

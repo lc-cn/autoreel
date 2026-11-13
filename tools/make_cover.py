@@ -25,7 +25,7 @@ def _lerp(stops, t):
     return stops[-1][1]
 
 
-def _background(w, h, stops=STOPS):
+def _background(w, h, stops=STOPS, glows=((91, 124, 255), (255, 95, 162))):
     # 斜向渐变 + 柔光 + 暗角，与视频背景同色系
     small = Image.new("RGB", (64, 64))
     px = small.load()
@@ -35,12 +35,12 @@ def _background(w, h, stops=STOPS):
     img = small.resize((w, h), Image.BICUBIC)
     glow = Image.new("RGB", (w, h), (0, 0, 0))
     d = ImageDraw.Draw(glow)
-    d.ellipse((-w * 0.25, -h * 0.1, w * 0.5, h * 0.45), fill=(91, 124, 255))
-    d.ellipse((w * 0.6, h * 0.6, w * 1.3, h * 1.2), fill=(255, 95, 162))
+    d.ellipse((-w * 0.25, -h * 0.1, w * 0.5, h * 0.45), fill=tuple(glows[0]))
+    d.ellipse((w * 0.6, h * 0.6, w * 1.3, h * 1.2), fill=tuple(glows[1]))
     glow = glow.filter(ImageFilter.GaussianBlur(min(w, h) // 6))
     img = Image.blend(img, glow, 0.35)
     shade = Image.new("RGB", (w, h), (8, 10, 40))
-    mask = Image.linear_gradient("L").resize((w, h)).point(lambda v: int(60 + v * 0.45))
+    mask = Image.linear_gradient("L").resize((w, h)).point(lambda v: int(25 + v * 0.35))  # 上浅下深，保留配色特征，底部压暗保证白字清晰
     img = Image.composite(shade, img, mask)
     grid = ImageDraw.Draw(img, "RGBA")
     for x in range(0, w, 90):
@@ -48,6 +48,11 @@ def _background(w, h, stops=STOPS):
     for y in range(0, h, 90):
         grid.line((0, y, w, y), fill=(255, 255, 255, 18))
     return img
+
+
+def follow_text(S):
+    sl = S.get("slogan", "")
+    return sl if sl.startswith("每天") else "每天" + sl
 
 
 def _fit(d, text, size, max_w, min_size=28):
@@ -62,7 +67,7 @@ def _hex(c):
 
 def render(data, w, h, color_of, S=None):
     S = S or {"name": "热点快报", "slogan": "一分钟看懂天下事", "stops": STOPS, "mark": "#ff4646"}
-    img = _background(w, h, S["stops"])
+    img = _background(w, h, S["stops"], [_hex(g) for g in S.get("glows", ["#5b7cff", "#ff5fa2"])[:2]])
     d = ImageDraw.Draw(img, "RGBA")
     pad = int(w * 0.075)
     m = re.search(r"(\d+)月(\d+)日", data.get("date", ""))
@@ -116,7 +121,7 @@ def render(data, w, h, color_of, S=None):
         title = it["title"].replace("|", "")
         f = _fit(d, title, fs, w - pad - x)
         d.text((x, cy - f.size * 0.55), title, font=f, fill="white")
-    foot = f"关注我 · 每天{S['slogan']}"
+    foot = f"关注我 · {follow_text(S)}"
     ff = _f(int(h * 0.026))
     d.text(((w - d.textlength(foot, font=ff)) / 2, h - int(h * 0.055)), foot, font=ff, fill=(238, 241, 255, 200))
     return img

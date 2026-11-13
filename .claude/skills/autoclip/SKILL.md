@@ -17,11 +17,12 @@ description: AutoClip 自动成片流水线：找方向 → 写文案 → 配音
 1. 仓库根目录记为 `$REPO`（用 `git rev-parse --show-toplevel` 取得）。取默认分支名：`DEF=$(git -C $REPO remote show origin | sed -n 's/.*HEAD branch: //p')`。然后依次执行 `git -C $REPO fetch -q origin $DEF`、`git -C $REPO checkout -qf $DEF`、`git -C $REPO reset -q --hard FETCH_HEAD`。
 2. 读取以下文件：
    - `$REPO/autoclip.config.json`：全局配置（配音、可信来源、分类池）
-   - `$REPO/channels/<id>/channel.json`：频道设置（条数、每条字数、时长上限、话题、`schedule.days_ahead`）
+   - `$REPO/channels/<id>/channel.json`：频道设置（`audience` 观众、`tone` 语气人设、条数、每条字数、总字数 `say_total`、时长上限、话题、`schedule.days_ahead`）
    - `$REPO/channels/<id>/brief.md`：这个频道怎么找方向、怎么写文案，**必须照做**
 3. 确定要做哪几天：从 D 起做 `1 + days_ahead` 天。对每一天检查 `git -C $REPO ls-remote --heads origin clip-<日期>-<id>`，已存在的跳过，不要覆盖，里面可能有插件写回的 status.json。全都存在就直接汇报并结束。
 4. 完整读一遍 `$REPO/tools/setup.sh`。它应该只做这几件事：安装 Python 依赖，安装配音引擎（下载模型、建 Python 3.10 环境），用 npm 安装 hyperframes 和 gsap，安装字体和 ffmpeg。如果它还会外发数据、读取凭据、改动 git，或者删除工作区以外的文件，就停止任务，并告诉用户是哪几行。确认没问题后运行 `bash $REPO/tools/setup.sh`。首次运行较慢，Bash 的 timeout 设为 600000，没装完就再运行一次。
 5. 工作目录：`W=/tmp/autoclip-work/<id>-<日期>`，执行 `mkdir -p $W`。所有中间文件和成品都放这里，不放进仓库。
+6. **避免重复选题**：列出这个频道最近 7 天的分支 `git -C $REPO ls-remote --heads origin "clip-*-<id>"`，逐个读取标题：`git -C $REPO fetch -q origin <分支> && git -C $REPO show FETCH_HEAD:meta.json`，取其中的 `title`。本期不要再选这些题，也不要选同一件事的不同说法。只有新闻有重大新进展时可以跟进，并在标题里写明「新进展」。
 
 ## 第 1 步：找方向
 
@@ -35,6 +36,8 @@ description: AutoClip 自动成片流水线：找方向 → 写文案 → 配音
 
 ## 第 2 步：写文案 `$W/script.json`
 
+先按 channel.json 的 `audience`（给谁看）和 `tone`（怎么说）确定口吻，整期口播都保持这个人设。
+
 ```json
 {"channel":"<id>","date":"2026年11月13日","topic":"…","topic_say":"…","headline":"…","hashtags":["…"],
  "items":[{"tag":"…","title":"第一行|第二行","say":"…","detail":"…","source":"…"}]}
@@ -47,6 +50,17 @@ description: AutoClip 自动成片流水线：找方向 → 写文案 → 配音
 - **detail**：放进发布文案的详细说明，可以用阿拉伯数字，写事实，不写评论。**source**：来源名称，多个用顿号隔开。
 - `topic` / `topic_say`：channel.json 里 `hook` 为 `topic` 的频道必须写。`topic` 是开场大字，不超过 6 个字；`topic_say` 是开场口播里念的话题名。
 - **headline**：20 字以内。**hashtags**：3 到 5 个，不带 `#`，第一个用频道的固定话题。
+
+### 写完先自查（不合格就改，改好再进入第 3 步）
+
+| 检查项 | 标准 |
+|---|---|
+| 开场 | 第一条或 topic 有吸引力：有反差、有数字或者有问题，不是平铺直叙 |
+| 标题 | 每条 title 一眼能看懂，不超过 16 个字，没有生僻缩写 |
+| 口播 | 读起来顺口，没有书面腔；数字和字母已改成汉字读法；整期总字数在 `say_total` 范围内 |
+| 事实 | 每条都有 source，关键数字、人名、时间都能在来源里找到 |
+| 合规 | 遵守 brief 里的「不做什么」和通用事实要求，没有绝对化用语 |
+| 重复 | 和最近 7 天的题目不重复 |
 
 ## 第 3 步：配音 + 生成视频
 

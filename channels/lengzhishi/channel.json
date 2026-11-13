@@ -2,6 +2,8 @@
   "id": "lengzhishi",
   "name": "一分钟冷知识",
   "slogan": "每天涨一点知识",
+  "audience": "好奇心强的年轻人、学生",
+  "tone": "像跟朋友聊天：先抛问题勾起好奇，再揭晓答案，轻松有趣",
   "label": "知识点",
   "deco": "FUN<br />FACTS",
   "src": "资料来源：公开资料",
@@ -15,6 +17,10 @@
   "say_chars": [
     50,
     70
+  ],
+  "say_total": [
+    180,
+    260
   ],
   "max_seconds": 70,
   "hashtags": [

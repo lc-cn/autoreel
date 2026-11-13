@@ -2,6 +2,8 @@
   "id": "dushu",
   "name": "一分钟读本书",
   "slogan": "每天一本书的精华",
+  "audience": "想读书但没时间的上班族",
+  "tone": "温和、有启发：转述书中观点，联系普通人的日常，不说教",
   "label": "核心观点",
   "deco": "BOOK<br />NOTES",
   "src": "资料来源：原书及公开书评",
@@ -15,6 +17,10 @@
   "say_chars": [
     50,
     75
+  ],
+  "say_total": [
+    200,
+    280
   ],
   "max_seconds": 80,
   "hashtags": [

@@ -52,6 +52,12 @@ def series(data):
     return CHANNELS[key]
 
 
+def follow_text(S):
+    """结尾「关注我 · 每天…」：口号本身以「每天」开头时不再重复。"""
+    sl = S.get("slogan", "")
+    return sl if sl.startswith("每天") else "每天" + sl
+
+
 def color(tag, i=0):
     return COLORS.get(tag, PALETTE[i % len(PALETTE)])
 
@@ -330,7 +336,7 @@ def build(data, times, dur, proj, spoken):
       <div id="src" class="clip" data-start="{T(starts[0])}" data-duration="{T(out_start - starts[0])}" data-track-index="3">{S["src"]}</div>
       <div id="outro" class="clip" data-start="{T(out_start)}" data-duration="{T(dur - out_start)}" data-track-index="2">
         <div id="recap">{recap}</div>
-        <div id="follow" style="top:{follow_top}px">关注我 · 每天{E(S["slogan"])}</div>
+        <div id="follow" style="top:{follow_top}px">关注我 · {E(follow_text(S))}</div>
       </div>
       {"".join(caps)}
     </div>
