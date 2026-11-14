@@ -10,10 +10,10 @@
 synth.last 里还有 sents（每句的文字和起止秒数，字幕用）和 report（清晰度检查结果）。
 
 怎么让配音好听：
-  1. 逐句合成：长段落拆成句子再合成，减少吞字、漏字；超过 40 字的句子在逗号处再拆开。
+  1. 整段合成：一段口播一次合成，语调和停顿由模型连贯处理；读法超过 90 字的段落在句号处拆开，减少吞字。
   2. 情绪（mood）：每段可以指定语气，见 MOODS；CosyVoice3 用语气指令，火山引擎用情感参数或语音指令。
-  3. 语速（pace）：慢 / 中 / 快，用模型自己的语速参数调，不做事后硬加速（硬加速会让吐字发糊）。
-  4. 节奏：句号、问号、感叹号、省略号后的停顿长短不同，段与段之间停得更久。
+  3. 语速：CosyVoice3 默认 1.15 倍（约 6 字/秒），pace 可选慢 / 中 / 快；都用模型自己的语速参数，不做事后硬加速。
+  4. 节奏：段内停顿由模型按标点决定，超过 0.25 秒的压短；段与段之间停 0.3 秒。
   5. 读法：稿子按字幕的样子写（11月12日、6.3%、9970亿），配音前由 textnorm.spoken 自动转成读法，字幕照原样显示；
      自动判断不了的写 {显示|读法}，例如 {11.12|十一月十二日}；多音字用 {字|拼音}，例如 {行|háng}；**重点** 会加重语气（CosyVoice3）。
   6. 清晰度检查：用语音识别把每句转回文字和原稿比对，错得多就换随机种子重做，最多 3 次，留最好的一版。
@@ -36,7 +36,8 @@ import textnorm  # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 SR = 24000  # 统一输出采样率
-MAX_SPEED = 1.12  # 整体最多提速 12%，再快吐字就不清楚了，应该删稿
+MAX_SPEED = 1.08  # 超时时在基础语速上最多再提速 8%，再快吐字就不清楚了，应该删稿
+BASE_SPEED = {"cosyvoice": 1.15}  # CosyVoice3 原生语速偏慢（约 5.2 字/秒），默认提到约 6 字/秒；可在 voice.<引擎>.speed 里改
 QC_RETRY = 0.08   # 字错率超过 8% 就重做这一句
 QC_TRIES = 3
 
@@ -44,18 +45,20 @@ QC_TRIES = 3
 MOODS = {
     "平稳": ("", "neutral", 1.0),
     "轻快": ("请用轻快、愉悦的语气说这句话。", "happy", 1.03),
-    "严肃": ("请用严肃、沉稳的语气说这句话。", "neutral", 0.97),
-    "沉重": ("请用低沉、惋惜的语气说这句话。", "sad", 0.94),
-    "温暖": ("请用温柔、亲切的语气说这句话。", "neutral", 0.97),
+    "严肃": ("请用严肃、沉稳的语气说这句话。", "neutral", 1.0),
+    "沉重": ("请用低沉、惋惜的语气说这句话。", "sad", 0.97),
+    "温暖": ("请用温柔、亲切的语气说这句话。", "neutral", 1.0),
     "惊讶": ("请用惊讶、好奇的语气说这句话。", "surprised", 1.0),
-    "激昂": ("请用激动、有力的语气说这句话。", "excited", 1.04),
-    "悬念": ("请用神秘、引人好奇的语气，稍微放慢一点说这句话。", "neutral", 0.95),
+    "激昂": ("请用激动、有力的语气说这句话。", "excited", 1.03),
+    "悬念": ("请用神秘、引人好奇的语气说这句话。", "neutral", 0.98),
 }
-PACE = {"慢": 0.92, "中": 1.0, "快": 1.07}
+PACE = {"慢": 0.94, "中": 1.0, "快": 1.06}
 # 句末停顿（秒）
 PAUSE = {"。": 0.30, "！": 0.32, "？": 0.38, "；": 0.22, "…": 0.50, "，": 0.12}
-GAP_LINE = 0.50   # 段与段之间
-LEAD = 0.30       # 开头留白
+GAP_LINE = 0.30   # 段与段之间
+MAX_GAP = 0.25    # 段内停顿最长 0.25 秒，超过的压短（模型偶尔会停很久）
+CHUNK = 90        # 一段读法超过 90 字就在句号处拆开合成，太长容易吞字
+LEAD = 0.20       # 开头留白
 
 
 # ───────── 文字处理 ─────────
@@ -304,25 +307,82 @@ def pick(v):
 
 
 # ───────── 主流程 ─────────
+def _silences(a, min_len=0.08):
+    """找出静音段 [(开始, 结束)]（采样点）。"""
+    hop = int(SR * 0.01)
+    if len(a) < hop * 3:
+        return []
+    e = np.sqrt(np.convolve(a ** 2, np.ones(hop * 2) / (hop * 2), "same"))[::hop]
+    quiet = e < e.max() * 0.03
+    out, st = [], None
+    for k, q in enumerate(quiet):
+        if q and st is None:
+            st = k
+        elif not q and st is not None:
+            if (k - st) * 0.01 >= min_len and st > 0:
+                out.append((st * hop, k * hop))
+            st = None
+    return out
+
+
+def _squeeze(a, max_gap=MAX_GAP):
+    """把段内过长的停顿压到 max_gap 秒，保留停顿两端的自然衰减。"""
+    keep = int(max_gap * SR)
+    parts, pos = [], 0
+    for st, en in _silences(a):
+        if en - st > keep:
+            mid = (st + en) // 2
+            parts.append(a[pos:mid - keep // 2])
+            pos = mid + keep - keep // 2
+    parts.append(a[pos:])
+    return np.concatenate(parts) if len(parts) > 1 else a
+
+
+def _sentence_times(a, sents, t0):
+    """一段音频里每句的起止时间：先按读法字数估计边界，再吸附到最近的停顿上。"""
+    w = [max(1, len(textnorm.spoken(x))) for x in sents]
+    dur = len(a) / SR
+    gaps = [((st + en) / 2 / SR) for st, en in _silences(a)]
+    bounds, acc = [], 0
+    for x in w[:-1]:
+        acc += x
+        est = dur * acc / sum(w)
+        near = [g for g in gaps if abs(g - est) < 0.8 and (not bounds or g > bounds[-1] + 0.3)]
+        bounds.append(min(near, key=lambda g: abs(g - est)) if near else est)
+    edges = [0.0] + bounds + [dur]
+    return [(sents[k], t0 + edges[k], t0 + edges[k + 1]) for k in range(len(sents))]
+
+
+def _chunks(text):
+    """一段口播按句号拆成不超过 CHUNK 字（读法）的几块；返回 [显示文字]。"""
+    out, buf = [], ""
+    for s, _ in split_sentences(text, max_len=999):
+        if buf and len(textnorm.spoken(display_text(buf + s))) > CHUNK:
+            out.append(buf)
+            buf = ""
+        buf += s
+    return out + [buf] if buf else out
+
+
 def _jobs(lines, provider, speed, seed=0):
     jobs = []
     for li, ln in enumerate(lines):
         ln = {"text": ln} if isinstance(ln, str) else ln
         mood = ln.get("mood") or "平稳"
         base = MOODS.get(mood, MOODS["平稳"])[2] * PACE.get(ln.get("pace") or "中", 1.0)
-        for si, (s, pause) in enumerate(split_sentences(ln["text"])):
-            say = textnorm.spoken(s)  # 稿子按字幕写，这里转成读法（数字、日期、百分号……）
-            jobs.append({"line": li, "raw": s, "say": say, "text": render_text(say, provider), "mood": mood, "pause": pause,
-                         "speed": round(base * speed, 3), "seed": seed + li * 31 + si})
+        for ci, raw in enumerate(_chunks(ln["text"])):
+            say = textnorm.spoken(raw)  # 稿子按字幕写，这里转成读法（数字、日期、百分号……）
+            jobs.append({"line": li, "raw": raw, "say": say, "text": render_text(say, provider), "mood": mood,
+                         "speed": round(base * speed, 3), "seed": seed + li * 31 + ci})
     return jobs
 
 
 def _run(provider, jobs, voice):
-    return [_trim(a) for a in ENGINES[provider](jobs, voice)]
+    return [_squeeze(_trim(a)) for a in ENGINES[provider](jobs, voice)]
 
 
 def _qc_pass(provider, jobs, segs, voice, qc, log):
-    """清晰度检查：错得多的句子换随机种子重做，留字错率最低的一版。"""
+    """清晰度检查：错得多的段落换随机种子重做，留字错率最低的一版。"""
     if qc is None:
         return [None] * len(jobs)
     res = [qc.check(a, j["say"], SR) for a, j in zip(segs, jobs)]
@@ -330,7 +390,7 @@ def _qc_pass(provider, jobs, segs, voice, qc, log):
         bad = [k for k, r in enumerate(res) if r and r["cer"] > QC_RETRY]
         if not bad:
             break
-        log(f"清晰度：{len(bad)} 句没念清楚，第 {attempt} 次重做")
+        log(f"清晰度：{len(bad)} 段没念清楚，第 {attempt} 次重做")
         redo = [{**jobs[k], "seed": jobs[k]["seed"] + 1000 * attempt} for k in bad]
         try:
             new = _run(provider, redo, voice)
@@ -353,8 +413,11 @@ def synth(lines, voice, target=90, min_speed=1.0, max_speed=MAX_SPEED):
     except Exception:
         qc = None
 
-    def attempt(p, speed):
-        jobs = _jobs(lines, p, speed)
+    def base_speed(p):
+        return float((voice.get(p) or {}).get("speed", BASE_SPEED.get(p, 1.0))) if p != "sherpa" else 1.0
+
+    def attempt(p, extra):
+        jobs = _jobs(lines, p, base_speed(p) * extra)
         return jobs, _run(p, jobs, voice)
 
     try:
@@ -367,16 +430,17 @@ def synth(lines, voice, target=90, min_speed=1.0, max_speed=MAX_SPEED):
         jobs, segs = attempt(provider, 1.0)
 
     def total(segs, jobs):
-        return LEAD + sum(len(a) / SR + j["pause"] for a, j in zip(segs, jobs)) + GAP_LINE * (len(lines) - 1)
+        return LEAD + sum(len(a) / SR for a in segs) + MAX_GAP * (len(jobs) - len(lines)) + GAP_LINE * (len(lines) - 1) + 0.3
 
+    extra = 1.0
     natural = total(segs, jobs)
-    speed = 1.0
-    if natural > target - 0.6:  # 太长：用模型自己的语速参数整体提速（不超过 MAX_SPEED），再长就要删稿
-        speed = min(max_speed, natural / (target - 0.6))
-        log(f"配音：正常语速 {natural:.1f}s 超过 {target - 0.6:.0f}s，整体提速到 x{speed:.2f} 重新合成")
-        jobs, segs = attempt(provider, speed)
+    if natural > target - 0.6:  # 太长：在基础语速上再小幅提速（不超过 MAX_SPEED），再长就要删稿
+        extra = min(max_speed, natural / (target - 0.6))
+        log(f"配音：时长 {natural:.1f}s 超过 {target - 0.6:.0f}s，再提速 x{extra:.2f} 重新合成")
+        jobs, segs = attempt(provider, extra)
         if total(segs, jobs) > target - 0.6:
-            log(f"提醒：提速到 x{speed:.2f} 后仍有 {total(segs, jobs):.1f}s，请把 say 删短（语速再快会吐字不清）")
+            log(f"提醒：提速后仍有 {total(segs, jobs):.1f}s，请把 say 删短（语速再快会吐字不清）")
+    speed = base_speed(provider) * extra
 
     res = _qc_pass(provider, jobs, segs, voice, qc, log)
 
@@ -386,13 +450,13 @@ def synth(lines, voice, target=90, min_speed=1.0, max_speed=MAX_SPEED):
         start = t
         for n, k in enumerate(ks):
             a = segs[k]
-            sents.append((li, display_text(jobs[k]["raw"]), t, t + len(a) / SR))
+            parts = [display_text(x) for x, _ in split_sentences(jobs[k]["raw"])]
+            sents.extend((li, txt, s0, s1) for txt, s0, s1 in _sentence_times(a, parts, t))
             out.append(a)
             t += len(a) / SR
             if n < len(ks) - 1:
-                p = jobs[k]["pause"]
-                out.append(np.zeros(int(p * SR), np.float32))
-                t += p
+                out.append(np.zeros(int(MAX_GAP * SR), np.float32))
+                t += MAX_GAP
         times.append((start, t))
         gap = GAP_LINE if li < len(lines) - 1 else 0.3
         out.append(np.zeros(int(gap * SR), np.float32))
@@ -400,17 +464,17 @@ def synth(lines, voice, target=90, min_speed=1.0, max_speed=MAX_SPEED):
     audio = _master(np.concatenate(out))
 
     checked = [(j, r) for j, r in zip(jobs, res) if r]
-    report = {"provider": provider, "speed": round(speed, 3), "sentences": len(jobs), "checked": len(checked)}
+    report = {"provider": provider, "speed": round(speed, 3), "chunks": len(jobs), "checked": len(checked)}
     if checked:
         report["cer"] = round(float(np.mean([r["cer"] for _, r in checked])), 3)
         report["unclear"] = [{"line": j["line"], "text": r["diff"], "heard": r["heard"], "cer": r["cer"]}
                              for j, r in checked if r["cer"] > QC_RETRY]
     synth.last = {"sents": sents, "report": report}
-    msg = f"配音：{provider}，{len(jobs)} 句，语速 x{speed:.2f}"
+    msg = f"配音：{provider}，{len(jobs)} 段，语速 x{speed:.2f}"
     if checked:
         msg += f"，清晰度检查平均字错率 {report['cer'] * 100:.1f}%"
         for u in report["unclear"]:
-            msg += f"\n提醒：第 {u['line'] + 1} 段这句可能没念清楚（〔〕处）：{u['text']}  识别成「{u['heard']}」"
+            msg += f"\n提醒：第 {u['line'] + 1} 段可能没念清楚（〔〕处）：{u['text']}  识别成「{u['heard']}」"
     elif qc is None:
         msg += "（没有识别模型，跳过清晰度检查）"
     log(msg)
