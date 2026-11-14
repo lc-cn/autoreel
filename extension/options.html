@@ -36,6 +36,11 @@
   .acct select { width: auto; display: inline-block; margin-left: 6px; padding: 4px 8px; }
   .acct .idt { margin-top: 6px; color: var(--ink-2); }
   .acct .idb { margin-top: 6px; display: flex; gap: 6px; }
+  .acct .ah, .acct .ar { display: flex; align-items: center; gap: 8px; }
+  .acct .ah { margin-bottom: 4px; }
+  .acct .ar { padding: 6px 0; border-top: 1px solid var(--line); }
+  .acct .sp { flex: 1; }
+  .acct .here { margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--line); }
   .evs { display: flex; flex-wrap: wrap; gap: 8px 18px; margin-top: 6px; }
   .vars { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
   .var { font: 11.5px var(--mono); padding: 3px 8px; border-radius: 7px; background: var(--brand-soft); color: var(--brand); border: none; cursor: pointer; }
@@ -144,6 +149,7 @@
   <nav class="card">
     <a href="#basic" data-tab="basic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12h18M3 6h18M3 18h12"/></svg>基本设置</a>
     <a href="#channels" data-tab="channels"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><path d="M14 17.5h7M17.5 14v7"/></svg>频道</a>
+    <a href="#studio" data-tab="studio"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg>制作设置</a>
     <a href="#materials" data-tab="materials"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>素材</a>
     <a href="#voices" data-tab="voices"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>音色</a>
     <a href="#works" data-tab="works"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m10 9 5 3-5 3z"/></svg>作品</a>
@@ -197,7 +203,19 @@
     <div class="panel" id="p-channels">
       <section class="card">
         <div class="card-h" style="font-size:15px">频道<span class="sub"><span class="pill" id="chDirty"></span> <button class="btn sm" type="button" id="chPull">从仓库拉取</button> <button class="btn sm primary" type="button" id="chSave" disabled>保存到仓库</button></span></div>
-        <p class="desc" style="margin:0">这里显示的是仓库里的频道设置。改完点「保存到仓库」，会作为一次提交写回仓库默认分支，下一期制作就按新设置来。<span class="muted" id="chState"></span></p>
+        <p class="desc" style="margin:0">左边选频道，右边是它的设置：发往哪些账号、发布时间、文案风格、配音等。改完点「保存到仓库」，下一期制作就按新设置来。所有频道共用的配音和内容规范在「<a href="#studio">制作设置</a>」。<span class="muted" id="chState"></span></p>
+      </section>
+      <div class="chwrap">
+        <section class="card chside"><div class="card-h">频道列表<span class="sub">开关 = 是否启用</span></div><div id="chList"></div></section>
+        <section class="card chmain"><div id="chChecks" class="checks"></div><div id="chBody"><div class="muted">点「从仓库拉取」读取频道。</div></div></section>
+      </div>
+    </div>
+
+    <!-- 制作设置（全局，autoreel.config.json） -->
+    <div class="panel" id="p-studio">
+      <section class="card">
+        <div class="card-h" style="font-size:15px">制作设置<span class="sub"><span class="pill" id="gsDirty"></span> <button class="btn sm" type="button" id="gsPull">从仓库拉取</button> <button class="btn sm primary" type="button" id="gsSave" disabled>保存到仓库</button></span></div>
+        <p class="desc" style="margin:0">所有频道共用的制作规则，写在仓库的 autoreel.config.json。单个频道的设置在「<a href="#channels">频道</a>」页。<span class="muted" id="gsState"></span></p>
       </section>
       <section class="card">
         <h2>全局配音</h2>
@@ -205,19 +223,10 @@
         <div id="gVoice"></div>
       </section>
       <section class="card">
-        <h2>账号</h2>
-        <p class="desc">各平台的发布账号，写在 autoreel.config.json。同一平台的多个账号各用一个 Chrome 用户资料登录，在那个 Chrome 插件的「发布平台」里选它是哪个账号。</p>
-        <div id="gAccounts"></div>
-      </section>
-      <section class="card">
         <h2>内容规范</h2>
         <p class="desc">所有频道共用的找资料和发布规则，写在 autoreel.config.json。</p>
         <div id="gContent"></div>
       </section>
-      <div class="chwrap">
-        <section class="card chside"><div class="card-h">频道列表<span class="sub">开关 = 是否启用</span></div><div id="chList"></div></section>
-        <section class="card chmain"><div id="chChecks" class="checks"></div><div id="chBody"><div class="muted">点「从仓库拉取」读取频道。</div></div></section>
-      </div>
     </div>
 
     <!-- 素材 -->

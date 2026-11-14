@@ -35,7 +35,9 @@ async function render() {
     if (ch === "") return null;
     if (ch) return ACC.find((a) => a.id === ch) || null;
     const mine = ACC.filter((a) => a.platform === k);
-    return mine.length === 1 ? mine[0] : null;
+    if (mine.length === 1) return mine[0];
+    const known = mine.filter((a) => (settings.ident || {})[a.id]);
+    return known.length === 1 ? known[0] : null;
   };
   const forMe = (slot, k) => { const A = acctOf(k); return !!A && (!slot.to || slot.to.includes(A.id) || (A.legacy && slot.to.includes(k))); };
 

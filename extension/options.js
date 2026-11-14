@@ -1,4 +1,5 @@
 import { DEFAULTS, PLATFORMS, EVENTS, VARS, PRESETS, DEFAULT_TEXT, newChannel, buildVars, buildRequest } from "./shared.js";
+import { loadRepo, saveFiles, toJSON } from "./repo.js";
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
@@ -32,7 +33,7 @@ function showTab() {
     if (!dirty) S.acct = ((await chrome.storage.local.get("settings")).settings || {}).acct || {};
     renderPlatforms();
   });
-  document.querySelector(".savebar").style.display = ["channels", "materials", "voices", "works"].includes(t) ? "none" : ""; // 这几页直接读写仓库，有自己的保存按钮
+  document.querySelector(".savebar").style.display = ["channels", "studio", "materials", "voices", "works"].includes(t) ? "none" : ""; // 这几页直接读写仓库，有自己的保存按钮
 }
 window.addEventListener("hashchange", showTab);
 
@@ -77,7 +78,8 @@ let ACCOUNTS = [];
 function acctInfo(k) {
   const mine = ACCOUNTS.filter((a) => a.platform === k);
   const chosen = (S.acct || {})[k];
-  const cur = chosen === "" ? null : chosen ? mine.find((a) => a.id === chosen) : mine.length === 1 ? mine[0] : null;
+  const known = mine.filter((a) => (S.ident || {})[a.id]);
+  const cur = chosen === "" ? null : chosen ? mine.find((a) => a.id === chosen) : mine.length === 1 ? mine[0] : known.length === 1 ? known[0] : null;
   return { mine, chosen, cur };
 }
 function identText(a, r) {
@@ -126,40 +128,118 @@ function renderPlatforms() {
     };
     row.append(btn, sw);
     box.appendChild(row);
-    if (on) {
-      const { mine, chosen, cur } = acctInfo(k);
-      const ac = document.createElement("div");
-      ac.className = "acct";
-      if (!ACCOUNTS.length) {
-        ac.innerHTML = `<span class="muted">仓库里还没有登记账号（按旧方式：这个平台的所有频道都发到这里登录的号）。要多账号管理，到「<a href="#channels">频道</a>」页的「账号」里添加。</span>`;
-      } else {
-        ac.innerHTML = `<label>这个浏览器登录的是 <select data-acct="${k}">
-            ${mine.map((a) => `<option value="${esc(a.id)}" ${cur && cur.id === a.id ? "selected" : ""}>${esc(a.name)}</option>`).join("")}
-            <option value="" ${chosen === "" || (!cur && mine.length !== 1) ? "selected" : ""}>不在这个浏览器发（交给别的 Chrome）</option></select></label>
-          ${!mine.length ? `<span class="err">仓库里没有${P.name}账号，到「频道」页添加</span>` : ""}
-          <div class="idt" data-idt="${k}">${cur ? identText(cur) : ""}</div>
-          ${cur ? `<div class="idb"><button class="btn sm" type="button" data-identify="${k}">识别账号</button><button class="btn sm ghost" type="button" data-rebind="${k}">重新识别（有意换号）</button></div>` : ""}`;
-        ac.querySelector("select").onchange = (e) => {
-          S.acct = { ...(S.acct || {}), [k]: e.target.value };
-          markDirty();
-          renderPlatforms();
-        };
-        const run = async (rebind) => {
-          if (dirty) return toast("先点「保存设置」，再识别账号");
-          if (rebind && !confirm(`用这个 Chrome 当前登录的${P.name}账号，覆盖「${cur.name}」原来的记录？只有你有意换号时才这样做。`)) return;
-          const el = ac.querySelector(`[data-idt="${k}"]`);
-          el.textContent = "正在打开页面识别……（约 10 秒）";
-          const r = await chrome.runtime.sendMessage({ type: "identify", platform: k, rebind });
-          await loadAccounts();
-          el.innerHTML = identText(cur, r || { error: "没有响应" });
-        };
-        const b1 = ac.querySelector("[data-identify]"), b2 = ac.querySelector("[data-rebind]");
-        if (b1) b1.onclick = () => run(false);
-        if (b2) b2.onclick = () => run(true);
-      }
-      box.appendChild(ac);
-    }
+    if (on) box.appendChild(accountBox(k, P));
   }
+}
+
+// ───── 账号（在仓库 autoreel.config.json 的 accounts 里登记；新建、改名、删除直接提交到仓库）─────
+function accountBox(k, P) {
+  const { mine, chosen, cur } = acctInfo(k);
+  const ac = document.createElement("div");
+  ac.className = "acct";
+  const rows = mine.map((a) => {
+    const id = (S.ident || {})[a.id];
+    const here = cur && cur.id === a.id;
+    return `<div class="ar"><b>${esc(a.name)}</b>${here ? '<span class="pill brand plain">本机</span>' : ""}<span class="muted">${esc(a.id)}${id && id.nickname ? ` · 本机识别为「${esc(id.nickname)}」` : ""}</span>
+      <span class="sp"></span><button class="btn sm ghost" type="button" data-ren="${esc(a.id)}">改名</button><button class="btn sm ghost danger" type="button" data-del="${esc(a.id)}">删除</button></div>`;
+  }).join("");
+  ac.innerHTML = `<div class="ah"><b>${P.name}账号</b><span class="sp"></span><button class="btn sm" type="button" data-add="${k}">＋ 添加${P.name}账号</button></div>
+    ${mine.length ? rows : `<div class="muted">${ACCOUNTS.length ? `还没有${P.name}账号。` : "还没有登记账号：按旧方式，所有频道都发到这个浏览器登录的号。"}要分账号发布就点右上角添加。</div>`}
+    ${mine.length ? `<div class="here"><label>这个浏览器登录的是 <select data-acct="${k}">
+        ${mine.map((a) => `<option value="${esc(a.id)}" ${cur && cur.id === a.id ? "selected" : ""}>${esc(a.name)}</option>`).join("")}
+        <option value="" ${chosen === "" || (!cur && mine.length !== 1) ? "selected" : ""}>不在这个浏览器发（交给别的 Chrome）</option></select></label>
+      <div class="idt" data-idt="${k}">${cur ? identText(cur) : "这个浏览器不发这个平台的任何频道"}</div>
+      ${cur ? `<div class="idb"><button class="btn sm" type="button" data-identify="${k}">识别账号</button><button class="btn sm ghost" type="button" data-rebind="${k}">重新识别（有意换号）</button></div>` : ""}</div>` : ""}`;
+  const sel = ac.querySelector("select");
+  if (sel) sel.onchange = (e) => {
+    S.acct = { ...(S.acct || {}), [k]: e.target.value };
+    markDirty();
+    renderPlatforms();
+    toast("记得点下方「保存设置」");
+  };
+  const run = async (rebind) => {
+    if (dirty) return toast("先点「保存设置」，再识别账号");
+    if (rebind && !confirm(`用这个 Chrome 当前登录的${P.name}账号，覆盖「${cur.name}」原来的记录？只有你有意换号时才这样做。`)) return;
+    const el = ac.querySelector(`[data-idt="${k}"]`);
+    el.textContent = "正在打开页面识别……（约 10 秒）";
+    const r = await chrome.runtime.sendMessage({ type: "identify", platform: k, rebind });
+    await loadAccounts();
+    el.innerHTML = identText(cur, r || { error: "没有响应" });
+  };
+  const b1 = ac.querySelector("[data-identify]"), b2 = ac.querySelector("[data-rebind]");
+  if (b1) b1.onclick = () => run(false);
+  if (b2) b2.onclick = () => run(true);
+  ac.querySelector("[data-add]").onclick = () => addAccount(k, P);
+  ac.querySelectorAll("[data-ren]").forEach((b) => b.onclick = () => renameAccount(b.dataset.ren));
+  ac.querySelectorAll("[data-del]").forEach((b) => b.onclick = () => deleteAccount(b.dataset.del));
+  return ac;
+}
+
+// 读仓库 → 改 → 一次提交；之后刷新插件里的频道和账号缓存
+async function repoEdit(change, message, done, after) {
+  try {
+    const R = await loadRepo();
+    const cfg = structuredClone(R.cfg.json);
+    cfg.accounts = Array.isArray(cfg.accounts) ? cfg.accounts : [];
+    const chs = R.channels.filter((c) => c.json).map((c) => ({ c, json: structuredClone(c.json) }));
+    const ok = change(cfg, chs);
+    if (ok === false) return;
+    const files = [];
+    if (toJSON(cfg) !== toJSON(R.cfg.json)) files.push({ path: "autoreel.config.json", text: toJSON(cfg), sha: R.cfg.sha });
+    for (const { c, json } of chs) if (toJSON(json) !== toJSON(c.json)) files.push({ path: `channels/${c.id}/channel.json`, text: toJSON(json), sha: c.file.sha });
+    if (!files.length) return;
+    await saveFiles(R.def, files, message);
+    if (after) await after();
+    await chrome.runtime.sendMessage({ type: "refreshChannels" }).catch(() => {});
+    await loadAccounts();
+    renderPlatforms();
+    toast(done);
+  } catch (e) {
+    alert(`没有保存：${e.message}`);
+  }
+}
+async function addAccount(k, P) {
+  const n = ACCOUNTS.filter((a) => a.platform === k).length + 1;
+  const { cur } = acctInfo(k);
+  const name = (prompt(`给新的${P.name}账号起个名字（只在插件和仓库里显示，比如「${P.name}历史号」）`, `${P.name}${n === 1 ? "主号" : "账号" + n}`) || "").trim();
+  if (!name) return;
+  if (name.length > 16) return toast("名字最多 16 个字");
+  await repoEdit((cfg, chs) => {
+    if (cfg.accounts.some((a) => a.name === name)) { toast("已经有同名账号"); return false; }
+    let i = n, id = `${k}_${i === 1 ? "main" : i}`;
+    while (cfg.accounts.some((a) => a.id === id)) id = `${k}_${++i}`;
+    // 没单独设置过的频道原本是「发往全部账号」，先固定成现有账号，新账号要在频道里勾选了才会发
+    const before = cfg.accounts.map((a) => a.id);
+    if (before.length) for (const x of chs) if (!Array.isArray(x.json.publish_to)) x.json.publish_to = [...before];
+    cfg.accounts.push({ id, platform: k, name });
+  }, `自影插件：新增账号 ${name}`, `已添加「${name}」。到「频道」页给要发到这个号的频道勾选它`, async () => {
+    // 本机原来代表的账号固定下来，加了新号以后这个浏览器照常发原来的号
+    if (cur && !(S.acct || {})[k]) {
+      const { settings = {} } = await chrome.storage.local.get("settings");
+      await chrome.storage.local.set({ settings: { ...settings, acct: { ...(settings.acct || {}), [k]: cur.id } } });
+      S.acct = { ...(S.acct || {}), [k]: cur.id };
+    }
+  });
+}
+async function renameAccount(id) {
+  const a = ACCOUNTS.find((x) => x.id === id);
+  const name = (prompt("新名字", a ? a.name : "") || "").trim();
+  if (!name || (a && name === a.name)) return;
+  await repoEdit((cfg) => {
+    const x = cfg.accounts.find((y) => y.id === id);
+    if (!x) { toast("仓库里没有这个账号了，刷新看看"); return false; }
+    x.name = name;
+  }, `自影插件：账号改名为 ${name}`, "已改名");
+}
+async function deleteAccount(id) {
+  const a = ACCOUNTS.find((x) => x.id === id);
+  await repoEdit((cfg, chs) => {
+    const only = chs.filter((x) => Array.isArray(x.json.publish_to) && x.json.publish_to.length === 1 && x.json.publish_to[0] === id);
+    if (only.length) { alert(`这些频道只发「${a.name}」：${only.map((x) => x.json.name).join("、")}。先到「频道」页给它们换个账号，或者关掉这些频道，再删除。`); return false; }
+    if (!confirm(`删除账号「${a.name}」？勾选了它的频道会去掉这个账号；登录这个号的那个 Chrome 将不再发布。`)) return false;
+    cfg.accounts = cfg.accounts.filter((x) => x.id !== id);
+    for (const x of chs) if (Array.isArray(x.json.publish_to)) x.json.publish_to = x.json.publish_to.filter((y) => y !== id);
+  }, `自影插件：删除账号 ${a ? a.name : id}`, "已删除");
 }
 
 // ───── 浏览器通知 ─────

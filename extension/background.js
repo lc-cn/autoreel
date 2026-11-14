@@ -697,7 +697,10 @@ async function accountFor(platform, s) {
   if (chosen === "") return null; // 明确选了「这个浏览器不发」
   if (chosen) return accounts.find((a) => a.id === chosen && a.platform === platform) || null;
   const mine = accounts.filter((a) => a.platform === platform);
-  return mine.length === 1 ? mine[0] : null;
+  if (mine.length === 1) return mine[0];
+  // 没明确选过：本机记录过其中哪个账号的身份，就是哪个（加了第二个号以后，原来的浏览器继续发原来的号）
+  const known = mine.filter((a) => (s.ident || {})[a.id]);
+  return known.length === 1 ? known[0] : null;
 }
 const targets = (slot, A) => !!A && (!slot.to || slot.to.includes(A.id) || (A.legacy && slot.to.some((x) => x === A.platform)));
 
