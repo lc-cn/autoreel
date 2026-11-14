@@ -27,7 +27,7 @@ Claude Code 云端定时任务（每个频道每天一次）
   └─ autoreel 技能
        ① 找方向：按频道 brief 搜索 / 读你的素材，事实需有来源
        ② 写文案 + 分镜：每段配一个画面（实拍 / 图表 / 地图 / 时间线 / 金句 / 你的素材）
-       ③ 配音：火山引擎豆包语音（抖音同款音色）或 CosyVoice 离线配音
+       ③ 配音：火山引擎豆包语音或 CosyVoice3，每段按内容换语气，逐句检查清晰度
        ④ 生成视频：按分镜取素材、画图表和地图，HyperFrames 渲染 1080×1920 竖屏，带字幕和「内容由AI生成」标识
        ⑤ 封面与发布信息：竖横双封面、标题、正文、话题、合集、AI 声明
   └─ 推送到你的私有仓库 clip-日期-频道 分支
@@ -61,10 +61,10 @@ Claude Code 云端定时任务（每个频道每天一次）
 | 方案 | 音色 | 成本 | 速度（一分钟视频） |
 |---|---|---|---|
 | **火山引擎豆包语音** `volcengine` | 抖音、剪映同源的大量音色 | 按量付费，需自己开通 | 几秒 |
-| **CosyVoice** `cosyvoice` | 内置「中文女 / 中文男」，或用你自己的录音复刻 | 免费，离线 | 无显卡约 6–8 分钟 |
+| **CosyVoice3** `cosyvoice` | 内置女声 / 男声，每段可换语气（轻快、严肃、沉重、悬念…），或用你自己的录音 | 免费，离线 | 无显卡约 5–6 分钟 |
 | sherpa 轻量模型 `sherpa` | Kokoro 等 | 免费，离线 | 几秒 |
 
-默认 `auto`：填了火山引擎就用火山引擎，否则用 CosyVoice。
+默认 `auto`：填了火山引擎就用火山引擎，否则用 CosyVoice3。不管用哪种，都会逐句合成、按标点控制停顿、标注多音字，并用离线语音识别**逐句检查有没有念清楚**，没念清楚的自动重做。
 
 ## 快速开始
 
@@ -93,7 +93,7 @@ Claude Code 云端定时任务（每个频道每天一次）
 | `inputs/` | 需要你提供素材的频道（书单、产品资料） |
 | `.claude/skills/autoreel/` | 出片技能（各频道通用）：找方向 → 写文案 → 自查 → 配音 → 生成视频 → 推送 |
 | `.claude/skills/autoreel-channel/` | 频道管理技能：交互式新建、编辑、停用频道 |
-| `tools/` | `gen_hf.py` 生成视频工程和文案、`scenes.py` 分镜画面、`footage.py` 实拍素材、`mapsvg.mjs` 地图、`tts.py` 配音、`make_cover.py` 封面、`check_channel.py` 频道检查与预览、`palettes.json` 配色预设、`push_clip.sh` 推送、`setup.sh` 安装 |
+| `tools/` | `gen_hf.py` 生成视频工程和文案、`scenes.py` 分镜画面、`footage.py` 实拍素材、`mapsvg.mjs` 地图、`tts.py` 配音、`voice_qc.py` 配音清晰度检查、`voices/` 内置音色、`make_cover.py` 封面、`check_channel.py` 频道检查与预览、`palettes.json` 配色预设、`push_clip.sh` 推送、`setup.sh` 安装 |
 | `extension/` | Chrome 插件（Manifest V3） |
 | `prompts/` | 定时任务指令模板 |
 

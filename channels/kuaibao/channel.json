@@ -78,5 +78,10 @@
       ]
     ]
   },
-  "collection": "热点快报"
+  "collection": "热点快报",
+  "voice": {
+    "mood": "平稳",
+    "intro_mood": "轻快",
+    "outro_mood": "温暖"
+  }
 }

@@ -77,5 +77,10 @@
       ]
     ]
   },
-  "collection": "一分钟冷知识"
+  "collection": "一分钟冷知识",
+  "voice": {
+    "mood": "轻快",
+    "intro_mood": "惊讶",
+    "outro_mood": "轻快"
+  }
 }

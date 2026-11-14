@@ -99,5 +99,10 @@
         "title": "作文结尾|最需要它"
       }
     ]
+  },
+  "voice": {
+    "mood": "温暖",
+    "intro_mood": "悬念",
+    "outro_mood": "温暖"
   }
 }

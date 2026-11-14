@@ -8,7 +8,9 @@
 |---|---|---|
 | [HyperFrames](https://github.com/heygen-com/hyperframes) | HTML → 视频渲染 | Apache-2.0 |
 | [GSAP](https://gsap.com/) | 画面动画 | GSAP Standard License（免费，含商用） |
-| [CosyVoice](https://github.com/FunAudioLLM/CosyVoice) | 离线语音合成（代码与模型） | Apache-2.0 |
+| [CosyVoice](https://github.com/FunAudioLLM/CosyVoice) | 离线语音合成（代码与 Fun-CosyVoice3-0.5B、CosyVoice-300M-SFT 模型） | Apache-2.0 |
+| [Paraformer 中文小模型](https://github.com/k2-fsa/sherpa-onnx/releases/tag/asr-models)（FunASR，经 sherpa-onnx 转换） | 配音清晰度检查（只在本地识别，不输出到成片） | [FunASR 模型许可](https://github.com/modelscope/FunASR/blob/main/MODEL_LICENSE)：可自由使用、修改、分享，需注明来源与作者；本项目只用它在本地做检查，不随成片分发 |
+| [pypinyin](https://github.com/mozillazg/python-pinyin)、[pyworld](https://github.com/JeremyCCHsu/Python-Wrapper-for-World-Vocoder) | 拼音比对、音高分析 | MIT |
 | [PyTorch](https://pytorch.org/) | CosyVoice 运行环境 | BSD-3-Clause |
 | [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) | 轻量离线语音合成 | Apache-2.0 |
 | [d3-geo](https://github.com/d3/d3-geo)、[topojson-client](https://github.com/topojson/topojson-client) | 地图投影与边界解析 | ISC |
@@ -22,7 +24,7 @@
 | 方案 | 授权说明 |
 |---|---|
 | 火山引擎豆包语音 `volcengine` | 商业云服务，按[火山引擎服务条款](https://www.volcengine.com/docs/6561)使用；需要你自己开通、付费，音色使用范围以火山引擎协议为准 |
-| CosyVoice `cosyvoice` | 模型以 Apache-2.0 发布。用参考录音复刻音色时，**只能使用你本人或已获授权的声音** |
+| CosyVoice `cosyvoice` | 模型以 Apache-2.0 发布。内置的「女声」「男声」参考录音（`tools/voices/`）由 CosyVoice-300M-SFT 的内置音色生成。用参考录音复刻音色时，**只能使用你本人或已获授权的声音** |
 | sherpa · Kokoro | [Kokoro-82M-v1.1-zh](https://huggingface.co/hexgrad/Kokoro-82M-v1.1-zh)，Apache-2.0；训练语料来自龙猫数据（LongMaoData），我们未找到语料的单独授权说明 |
 | sherpa · MeloTTS | MIT |
 | sherpa · baker | 模型代码 Apache-2.0；**训练数据为标贝中文标准女声语音库，仅授权非商业使用，不建议商用** |

@@ -77,5 +77,10 @@
       ]
     ]
   },
-  "collection": "好物推荐"
+  "collection": "好物推荐",
+  "voice": {
+    "mood": "轻快",
+    "intro_mood": "轻快",
+    "outro_mood": "轻快"
+  }
 }

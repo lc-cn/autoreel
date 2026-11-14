@@ -99,7 +99,7 @@ def make_caption(data):
            S["label"] + "：" + "｜".join(categories(items)), ""]
     for i, it in enumerate(items):
         out.append(f"{circled[i]} 【{it['tag']}】{it['title'].replace('|', '')}")
-        out.append(it.get("detail") or it["say"])
+        out.append(it.get("detail") or tts.display_text(it["say"]))
         out.append("")
     srcs = []
     for it in items:
@@ -215,12 +215,20 @@ def build(data, times, dur, proj, spoken):
 
     # 字幕：每句切短语，一次只显示一组
     caps, k = [], 0
-    for li, (a, b) in enumerate(times[:-1]):  # 结尾页已有"关注我"，不再加字幕
-        say = spoken[li]
-        for p, s, e in phrases(say, a, b + 0.1):
-            caps.append(f'<div class="clip cap" id="cap{k}" data-start="{T(s)}" data-duration="{T(e - s)}" data-track-index="5"><span>{E(p)}</span></div>')
-            js.append(f'tl.fromTo("#cap{k} span", {{y: 16, opacity: 0}}, {{y: 0, opacity: 1, duration: 0.12, ease: "power2.out"}}, {T(s)});')
-            k += 1
+    sents = (tts.synth.last or {}).get("sents") or []
+    if not sents or max(x[0] for x in sents) != len(times) - 1:  # 没有逐句时间时，按整段平均分配
+        sents = [(li, tts.display_text(spoken[li]), a, b) for li, (a, b) in enumerate(times)]
+    pieces = []
+    for li, txt, a, b in sents:
+        if li == len(times) - 1:  # 结尾页已有"关注我"，不再加字幕
+            continue
+        pieces.extend(phrases(txt, a, b + 0.08))
+    for j, (p, s, e) in enumerate(pieces):
+        if j + 1 < len(pieces):
+            e = min(e, pieces[j + 1][1])
+        caps.append(f'<div class="clip cap" id="cap{k}" data-start="{T(s)}" data-duration="{T(e - s)}" data-track-index="5"><span>{E(p)}</span></div>')
+        js.append(f'tl.fromTo("#cap{k} span", {{y: 16, opacity: 0}}, {{y: 0, opacity: 1, duration: 0.12, ease: "power2.out"}}, {T(s)});')
+        k += 1
 
     recap = "".join(f'<div class="rc c{i}" id="rc{i}"><span class="rtag">{E(it["tag"])}</span>{E(it["title"].replace("|", ""))}</div>' for i, it in enumerate(items))
     js.append(f'''
@@ -228,7 +236,7 @@ def build(data, times, dur, proj, spoken):
       tl.fromTo("#follow", {{scale: 0.6, opacity: 0}}, {{scale: 1, opacity: 1, duration: 0.45, ease: "back.out(2.2)"}}, {T(out_start + 0.5)});''')
 
     progress = "".join(f'<div class="pgs c{i}"><div class="pgf" id="pg{i}"></div></div>' for i in range(n))
-    all_text = data["date"] + data["intro"] + data["outro"] + "".join(it["tag"] + it["title"] + it["say"] for it in items) + "内容由AI生成热点快报今日大热点关注我每天一分钟看懂天下事信息来源公开报道本期涉及条一二三四五六七八九十月日这" + "".join(S[k] for k in ("name", "slogan", "label", "src")) + data.get("topic", "") + "".join(ctx.chars) + "单位："
+    all_text = data["date"] + data["intro"] + data["outro"] + "".join(it["tag"] + it["title"] + tts.display_text(it["say"]) for it in items) + "内容由AI生成热点快报今日大热点关注我每天一分钟看懂天下事信息来源公开报道本期涉及条一二三四五六七八九十月日这" + "".join(S[k] for k in ("name", "slogan", "label", "src")) + data.get("topic", "") + "".join(ctx.chars) + "单位："
     os.makedirs(f"{proj}/assets/fonts", exist_ok=True)
     subset_font("".join(sorted(set(all_text))), f"{proj}/assets/fonts/zh.woff2")
     shutil.copy(GSAP, f"{proj}/assets/gsap.min.js")
@@ -361,8 +369,18 @@ def main():
     target = float(S.get("max_seconds", 90)) + 10  # 正常语速读完即可；超出上限时由写稿环节删短
     data["intro"] = data.get("intro") or auto_intro(data)
     data.setdefault("outro", S["outro"])
-    lines = [data["intro"]] + [spoken_item(i, it["say"]) for i, it in enumerate(data["items"])] + [data["outro"]]
-    audio, sr, times, speed = tts.synth(lines, VOICE, target, min_speed=float(VOICE.get("min_speed", 1.05)))
+    vs = S.get("voice") or {}  # 频道的配音语气：mood 默认语气，intro_mood / outro_mood 开场和结尾
+    lines = ([{"text": data["intro"], "mood": data.get("intro_mood") or vs.get("intro_mood", "轻快")}]
+             + [{"text": spoken_item(i, it["say"]), "mood": it.get("mood") or vs.get("mood", "平稳"), "pace": it.get("pace") or vs.get("pace")}
+                for i, it in enumerate(data["items"])]
+             + [{"text": data["outro"], "mood": data.get("outro_mood") or vs.get("outro_mood", "温暖")}])
+    voice = json.loads(json.dumps(VOICE))  # 频道可以单独指定音色
+    if vs.get("voice"):
+        voice.setdefault("cosyvoice", {})["voice"] = vs["voice"]
+    if vs.get("volc_speaker"):
+        voice.setdefault("volcengine", {})["speaker"] = vs["volc_speaker"]
+    audio, sr, times, speed = tts.synth(lines, voice, target)
+    lines = [ln["text"] for ln in lines]
     dur = round(len(audio) / sr + 0.5, 2)
     os.makedirs(f"{proj}/assets", exist_ok=True)
     sf.write(f"{proj}/assets/voice.wav", audio, sr)
@@ -397,6 +415,8 @@ def main():
     except Exception as e:
         print(f"封面生成失败（不影响视频，抖音会用默认封面）：{e!r}")
     json.dump(meta, open(os.path.join(os.path.dirname(cap_path), "发布信息.json"), "w"), ensure_ascii=False, indent=1)
+    rep = (tts.synth.last or {}).get("report") or {}
+    json.dump(rep, open(os.path.join(os.path.dirname(cap_path), "配音检查.json"), "w"), ensure_ascii=False, indent=1)
     print(f"工程已生成: {proj}  时长 {dur}s  语速 x{speed:.2f}")
     print(f"抖音文案: {cap_path}  （{len(cap)} 字，抖音上限约1000字）")
 

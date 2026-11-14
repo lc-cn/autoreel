@@ -77,5 +77,11 @@
       ]
     ]
   },
-  "collection": "历史上的今天"
+  "collection": "历史上的今天",
+  "voice": {
+    "mood": "平稳",
+    "intro_mood": "悬念",
+    "outro_mood": "温暖",
+    "voice": "男声"
+  }
 }

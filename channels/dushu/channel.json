@@ -77,5 +77,11 @@
       ]
     ]
   },
-  "collection": "一分钟读本书"
+  "collection": "一分钟读本书",
+  "voice": {
+    "mood": "温暖",
+    "intro_mood": "平稳",
+    "outro_mood": "温暖",
+    "voice": "男声"
+  }
 }
