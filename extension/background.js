@@ -784,7 +784,7 @@ async function saveIdent(acctId, got) {
 // ───────── 频道列表（从仓库读取，缓存 30 分钟）─────────
 async function getChannels(force = false) {
   const { channels } = await chrome.storage.local.get("channels");
-  if (!force && channels && Date.now() - channels.at < 30 * 60000) return channels.list;
+  if (!force && channels && "accounts" in channels && Date.now() - channels.at < 30 * 60000) return channels.list; // 旧版缓存没有账号信息，直接重读
   try {
     const raw = (p) => gh(`contents/${p}`, { accept: "application/vnd.github.raw" }).then((r) => r.json()); // 不带 ref = 仓库默认分支
     const cfg = await raw("autoreel.config.json");
@@ -1000,6 +1000,7 @@ async function keepAlive(force = false) {
 
 // ───────── 定时器 ─────────
 chrome.runtime.onInstalled.addListener(async () => {
+  getChannels(true).catch(() => {}); // 安装、更新、重新加载后立即按新版重读仓库的频道和账号
   chrome.alarms.create("tick", { periodInMinutes: 5 });
   chrome.alarms.create("keepalive", { periodInMinutes: 60 });
   const { settings } = await chrome.storage.local.get("settings");

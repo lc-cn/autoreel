@@ -28,7 +28,7 @@ function showTab() {
   document.querySelectorAll("nav a").forEach((a) => a.classList.toggle("on", a.dataset.tab === t));
   document.querySelectorAll(".panel").forEach((p) => p.classList.toggle("on", p.id === `p-${t}`));
   if (t === "logs") renderLogs();
-  if (t === "platforms" && S) loadAccounts().then(async () => {
+  if (t === "platforms" && S) chrome.runtime.sendMessage({ type: "refreshChannels" }).catch(() => {}).then(loadAccounts).then(async () => {
     if (!dirty) S.acct = ((await chrome.storage.local.get("settings")).settings || {}).acct || {};
     renderPlatforms();
   });
