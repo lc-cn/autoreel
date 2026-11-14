@@ -12,7 +12,8 @@ synth.last 里还有 sents（每句的文字和起止秒数，字幕用）和 re
 怎么让配音好听：
   1. 整段合成：一段口播一次合成，语调和停顿由模型连贯处理；读法超过 90 字的段落在句号处拆开，减少吞字。
   2. 情绪（mood）：每段可以指定语气，见 MOODS；CosyVoice3 用语气指令，火山引擎用情感参数或语音指令。
-  3. 语速：CosyVoice3 默认 1.15 倍（约 6 字/秒），pace 可选慢 / 中 / 快；都用模型自己的语速参数，不做事后硬加速。
+  3. 语速：整期固定，CosyVoice3 默认 1.06 倍（有声部分约 5.5 字/秒）；语气只改语调不改语速；超时不提速，提醒删稿。
+     稿子里的 pace 只有明确写了才生效（慢 / 中 / 快），一般不用。
   4. 节奏：段内停顿由模型按标点决定，超过 0.25 秒的压短；段与段之间停 0.3 秒。
   5. 读法：稿子按字幕的样子写（11月12日、6.3%、9970亿），配音前由 textnorm.spoken 自动转成读法，字幕照原样显示；
      自动判断不了的写 {显示|读法}，例如 {11.12|十一月十二日}；多音字用 {字|拼音}，例如 {行|háng}；**重点** 会加重语气（CosyVoice3）。
@@ -36,21 +37,21 @@ import textnorm  # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 SR = 24000  # 统一输出采样率
-MAX_SPEED = 1.08  # 超时时在基础语速上最多再提速 8%，再快吐字就不清楚了，应该删稿
-BASE_SPEED = {"cosyvoice": 1.15}  # CosyVoice3 原生语速偏慢（约 5.2 字/秒），默认提到约 6 字/秒；可在 voice.<引擎>.speed 里改
+MAX_SPEED = 1.0   # 语速固定，不因为超时而提速（忽快忽慢不自然）；超时就提醒删稿
+BASE_SPEED = {"cosyvoice": 1.06}  # CosyVoice3 原生语速偏慢；1.06 倍约 5.5 字/秒（有声部分），和资讯类短视频常见语速一致；可在 voice.<引擎>.speed 里改
 QC_RETRY = 0.08   # 字错率超过 8% 就重做这一句
 QC_TRIES = 3
 
-# 语气：CosyVoice3 指令 / 火山引擎 1.0 情感 / 默认语速系数
+# 语气：CosyVoice3 指令 / 火山引擎 1.0 情感 / 语速系数（统一 1.0：语气只改语调，不改语速）
 MOODS = {
     "平稳": ("", "neutral", 1.0),
-    "轻快": ("请用轻快、愉悦的语气说这句话。", "happy", 1.03),
+    "轻快": ("请用轻快、愉悦的语气说这句话。", "happy", 1.0),
     "严肃": ("请用严肃、沉稳的语气说这句话。", "neutral", 1.0),
-    "沉重": ("请用低沉、惋惜的语气说这句话。", "sad", 0.97),
+    "沉重": ("请用低沉、惋惜的语气说这句话。", "sad", 1.0),
     "温暖": ("请用温柔、亲切的语气说这句话。", "neutral", 1.0),
     "惊讶": ("请用惊讶、好奇的语气说这句话。", "surprised", 1.0),
-    "激昂": ("请用激动、有力的语气说这句话。", "excited", 1.03),
-    "悬念": ("请用神秘、引人好奇的语气说这句话。", "neutral", 0.98),
+    "激昂": ("请用激动、有力的语气说这句话。", "excited", 1.0),
+    "悬念": ("请用神秘、引人好奇的语气说这句话。", "neutral", 1.0),
 }
 PACE = {"慢": 0.94, "中": 1.0, "快": 1.06}
 # 句末停顿（秒）
@@ -434,12 +435,12 @@ def synth(lines, voice, target=90, min_speed=1.0, max_speed=MAX_SPEED):
 
     extra = 1.0
     natural = total(segs, jobs)
-    if natural > target - 0.6:  # 太长：在基础语速上再小幅提速（不超过 MAX_SPEED），再长就要删稿
+    if natural > target - 0.6 and max_speed > 1.0:  # 太长：允许时在基础语速上小幅提速（默认不提速），再长就要删稿
         extra = min(max_speed, natural / (target - 0.6))
         log(f"配音：时长 {natural:.1f}s 超过 {target - 0.6:.0f}s，再提速 x{extra:.2f} 重新合成")
         jobs, segs = attempt(provider, extra)
-        if total(segs, jobs) > target - 0.6:
-            log(f"提醒：提速后仍有 {total(segs, jobs):.1f}s，请把 say 删短（语速再快会吐字不清）")
+    if total(segs, jobs) > target - 0.6:
+        log(f"提醒：配音 {total(segs, jobs):.1f}s，超过频道上限 {target - 10:.0f}s 太多，请把 say 删短（语速固定，不会自动加快）")
     speed = base_speed(provider) * extra
 
     res = _qc_pass(provider, jobs, segs, voice, qc, log)
