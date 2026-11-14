@@ -13,6 +13,7 @@ synth.last 里还有 sents（每句的文字和起止秒数，字幕用）和 re
   1. 整段合成：一段口播一次合成，语调和停顿由模型连贯处理；读法超过 90 字的段落在句号处拆开，减少吞字。
   2. 情绪（mood）：每段可以指定语气，见 MOODS；CosyVoice3 用语气指令，火山引擎用情感参数或语音指令。
   3. 语速：整期固定，CosyVoice3 默认 1.06 倍（有声部分约 5.5 字/秒）；语气只改语调不改语速；超时不提速，提醒删稿。
+     频道可以在 channel.json 的 voice.speed 里设语速倍率（0.8–1.25，1 为默认），整期统一生效；
      稿子里的 pace 只有明确写了才生效（慢 / 中 / 快），一般不用。
   4. 节奏：段内停顿由模型按标点决定，超过 0.25 秒的压短；段与段之间停 0.3 秒。
   5. 读法：稿子按字幕的样子写（11月12日、6.3%、9970亿），配音前由 textnorm.spoken 自动转成读法，字幕照原样显示；
@@ -414,8 +415,11 @@ def synth(lines, voice, target=90, min_speed=1.0, max_speed=MAX_SPEED):
     except Exception:
         qc = None
 
+    factor = min(1.25, max(0.8, float(voice.get("speed_factor") or 1.0)))  # 频道的语速倍率（channel.json 的 voice.speed）
+
     def base_speed(p):
-        return float((voice.get(p) or {}).get("speed", BASE_SPEED.get(p, 1.0))) if p != "sherpa" else 1.0
+        base = float((voice.get(p) or {}).get("speed", BASE_SPEED.get(p, 1.0))) if p != "sherpa" else 1.0
+        return base * factor
 
     def attempt(p, extra):
         jobs = _jobs(lines, p, base_speed(p) * extra)

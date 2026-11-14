@@ -28,6 +28,7 @@ function showTab() {
   document.querySelectorAll("nav a").forEach((a) => a.classList.toggle("on", a.dataset.tab === t));
   document.querySelectorAll(".panel").forEach((p) => p.classList.toggle("on", p.id === `p-${t}`));
   if (t === "logs") renderLogs();
+  document.querySelector(".savebar").style.display = t === "channels" ? "none" : ""; // 频道页有自己的「保存到仓库」
 }
 window.addEventListener("hashchange", showTab);
 
@@ -39,7 +40,7 @@ async function load() {
   S = structuredClone(DEFAULTS);
   Object.assign(S, raw);
   S.platforms = { ...DEFAULTS.platforms, ...(raw.platforms || {}) };
-  S.times = { ...(raw.times || {}) };
+  delete S.times; // 发布时间以仓库为准（到「频道」页修改），不再有本机覆盖
   S.browserNotify = { ...DEFAULTS.browserNotify, ...(raw.browserNotify || {}) };
   S.textTemplate = raw.textTemplate || DEFAULT_TEXT;
   S.channels = Array.isArray(raw.channels) ? raw.channels : [];
@@ -51,7 +52,6 @@ async function load() {
   }
   $("repo").value = S.repo;
   $("token").value = S.token;
-  await renderTimes();
   $("ka").value = S.keepAliveHours;
   delete S.mirrors;
   delete S.mirrorMode;
@@ -248,6 +248,7 @@ async function renderRoutes() {
   $("routeTestAt").textContent = routeTest ? `上次测速：${routeTest.at.slice(5, 16)}` : "还没有测过速，建议测一次";
 }
 $("testRoutes").onclick = async () => {
+  await saveRepoToken();
   $("routeTestAt").textContent = "测速中，每条线路最多 60 秒…";
   const r = await chrome.runtime.sendMessage({ type: "testRoutes" });
   if (!r || r.error) {
@@ -256,23 +257,6 @@ $("testRoutes").onclick = async () => {
   }
   await renderRoutes();
   toast(r.results.some((x) => x.ok) ? "测速完成，插件会优先用更合适的线路" : "两条线路都不可用，请把测速结果截图发给 Claude");
-};
-
-// ───── 频道与发布时间 ─────
-async function renderTimes() {
-  const { channels } = await chrome.storage.local.get("channels");
-  const list = (channels && channels.list) || [];
-  $("timeList").innerHTML = list.length
-    ? list.map((c) => `<label class="field"><span class="label">${esc(c.name)}</span><input type="time" data-ch="${esc(c.key)}" data-def="${esc(c.notBefore)}" value="${esc(S.times[c.key] || c.notBefore)}" /><span class="help">频道默认 ${esc(c.notBefore)}</span></label>`).join("")
-    : '<div class="muted">还没有读取到频道。先填好仓库和令牌并保存，再点「刷新频道列表」。</div>';
-  $("timeList").querySelectorAll("input").forEach((i) => i.addEventListener("input", markDirty));
-  $("chInfo").textContent = channels ? `共 ${list.length} 个频道 · ${new Date(channels.at).toLocaleString("zh-CN", { hour12: false })} 读取` : "";
-}
-$("refreshCh").onclick = async () => {
-  $("chInfo").textContent = "读取中…";
-  const r = await chrome.runtime.sendMessage({ type: "refreshChannels" });
-  await renderTimes();
-  toast(r && r.list && r.list.length ? `读取到 ${r.list.length} 个频道` : "没有读取到频道，请检查仓库、令牌和 autoreel.config.json");
 };
 
 // ───── 备份与迁移 ─────
@@ -319,11 +303,46 @@ async function grant(chs, extra = []) {
 }
 
 // ───── 基本设置输入 ─────
-["repo", "token", "ka"].forEach((id) => $(id).addEventListener("input", markDirty));
+["ka"].forEach((id) => $(id).addEventListener("input", markDirty));
 $("auto").onchange = () => {
   $("autoTxt").textContent = $("auto").checked ? "已开启" : "已暂停";
   markDirty();
 };
+// ───── 仓库和令牌：填完就自动保存（不用先点「保存设置」，测速、频道页就能用）─────
+const normRepo = (v) => v.trim().replace(/^https:\/\/github\.com\//, "").replace(/\.git$/, "").replace(/\/$/, "");
+async function saveRepoToken() {
+  const repo = normRepo($("repo").value), token = $("token").value.trim();
+  const { settings = {} } = await chrome.storage.local.get("settings");
+  if (settings.repo === repo && settings.token === token) return false;
+  await chrome.storage.local.set({ settings: { ...settings, repo, token } });
+  if (S) Object.assign(S, { repo, token });
+  $("repo").value = repo;
+  return true;
+}
+window.__saveRepoToken = saveRepoToken; // 频道页拉取前也会调用
+for (const id of ["repo", "token"]) {
+  $(id).addEventListener("change", async () => {
+    if (await saveRepoToken()) {
+      toast("仓库和令牌已保存");
+      if ($("repo").value && $("token").value) chrome.runtime.sendMessage({ type: "refreshChannels" }).catch(() => {});
+    }
+  });
+}
+// 生成令牌：打开 GitHub 的细粒度令牌页面，预填名称、说明、有效期和 Contents 读写权限
+$("genTok").onclick = () => {
+  const repo = normRepo($("repo").value);
+  const owner = repo.includes("/") ? repo.split("/")[0] : "";
+  const q = new URLSearchParams({
+    name: `自影 AutoReel${repo ? " · " + repo.split("/")[1] : ""}`.slice(0, 40),
+    description: `自影 AutoReel 浏览器插件读写中转仓库${repo ? " " + repo : ""} 用。Repository access 请选 Only select repositories，只勾选这个仓库。`,
+    expires_in: "366",
+    contents: "write",
+  });
+  if (owner) q.set("target_name", owner);
+  chrome.tabs.create({ url: `https://github.com/settings/personal-access-tokens/new?${q}` });
+  toast(repo ? `在打开的页面里：Repository access 选「Only select repositories」，勾选 ${repo}，再点 Generate token` : "先填好仓库，生成的令牌可以只给这个仓库用");
+};
+
 $("showTok").onclick = () => {
   const t = $("token");
   t.type = t.type === "password" ? "text" : "password";
@@ -341,12 +360,9 @@ $("save").onclick = async () => {
     }
   }
   if (!(await grant(S.channels))) toast("部分推送地址没有授权，这些渠道将无法发送");
-  S.repo = $("repo").value.trim().replace(/^https:\/\/github\.com\//, "").replace(/\.git$/, "").replace(/\/$/, "");
+  S.repo = normRepo($("repo").value);
   S.token = $("token").value.trim();
-  S.times = {};
-  document.querySelectorAll("#timeList input[data-ch]").forEach((i) => {
-    if (i.value && i.value !== i.dataset.def) S.times[i.dataset.ch] = i.value;
-  });
+
   S.keepAliveHours = Math.max(1, Math.min(24, parseInt($("ka").value, 10) || 6));
   S.paused = !$("auto").checked;
   const out = { ...S };

@@ -69,6 +69,18 @@ def check(cid):
         warns.append("口号超过 12 个字，结尾的「关注我 · 每天…」按钮可能放不下")
     if isinstance(c.get("label"), str) and len(c["label"]) > 5:
         warns.append("label 超过 5 个字，开场标签行会拥挤")
+    v = c.get("voice") or {}
+    if not isinstance(v, dict):
+        errs.append("voice 应为对象，例如 {\"mood\": \"平稳\"}")
+        v = {}
+    moods = ("平稳", "轻快", "严肃", "沉重", "温暖", "惊讶", "激昂", "悬念")
+    for k in ("mood", "intro_mood", "outro_mood"):
+        if v.get(k) and v[k] not in moods:
+            errs.append(f"voice.{k}「{v[k]}」不在可选语气里：{'、'.join(moods)}")
+    if "speed" in v and not (isinstance(v["speed"], (int, float)) and 0.8 <= v["speed"] <= 1.25):
+        errs.append("voice.speed 是语速倍率，应在 0.8–1.25 之间（1 为默认）")
+    if v.get("voice") and not os.path.isdir(os.path.join(ROOT, "tools", "voices", v["voice"])):
+        warns.append(f"voice.voice「{v['voice']}」在 tools/voices/ 里找不到，CosyVoice 会出错")
     if c.get("hook") not in ("count", "topic", "date"):
         errs.append("hook 必须是 count / topic / date 之一")
     if c.get("hook") == "count" and not c.get("hook_unit"):

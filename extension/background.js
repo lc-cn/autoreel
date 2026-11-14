@@ -11,7 +11,7 @@ async function getSettings() {
   if (settings) {
     Object.assign(s, settings);
     s.platforms = { ...DEFAULTS.platforms, ...(settings.platforms || {}) };
-    s.times = { ...DEFAULTS.times, ...(settings.times || {}) };
+    s.times = {}; // 发布时间以仓库里各频道的 schedule.publish 为准（在设置页「频道」里改），旧版的本机覆盖不再生效
     s.browserNotify = { ...DEFAULTS.browserNotify, ...(settings.browserNotify || {}) };
     s.channels = Array.isArray(settings.channels) ? settings.channels : [];
 

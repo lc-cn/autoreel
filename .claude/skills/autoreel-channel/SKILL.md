@@ -16,6 +16,8 @@ description: 交互式新建、编辑、停用或删除自影频道。一步步�
 - 仓库根目录记为 `$REPO`，默认分支 `DEF=$(git -C $REPO remote show origin | sed -n 's/.*HEAD branch: //p')`。开始前先执行 `git -C $REPO pull -q origin $DEF`。
 - 预览和样片放在 `/tmp/autoreel-channel/<id>/`，能发文件就发给用户（Claude Code 里用 SendUserFile），不能就告诉用户文件位置。
 
+提示：只是改发布时间、口号、话题、篇幅、配音语气和语速、brief 这类微调，用户也可以直接在浏览器插件的「频道」页改，保存后会写回仓库。需要调研、配色预览、试做样片、新建频道时再用本技能。
+
 先判断用户要做什么：**新建**、**编辑**、**停用 / 删除**，或者**查看**。说不清时，先运行 `python3 $REPO/tools/check_channel.py --all` 列出现有频道，再问。
 
 ---

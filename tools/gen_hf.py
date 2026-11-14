@@ -390,6 +390,8 @@ def main():
     voice = json.loads(json.dumps(VOICE))  # 频道可以单独指定音色
     if vs.get("voice"):
         voice.setdefault("cosyvoice", {})["voice"] = vs["voice"]
+    if vs.get("speed"):  # 频道语速倍率，1 为默认
+        voice["speed_factor"] = float(vs["speed"])
     if vs.get("volc_speaker"):
         voice.setdefault("volcengine", {})["speaker"] = vs["volc_speaker"]
     audio, sr, times, speed = tts.synth(lines, voice, target)
