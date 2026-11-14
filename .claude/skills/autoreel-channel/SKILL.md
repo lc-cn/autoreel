@@ -1,11 +1,11 @@
 ---
-name: autoclip-channel
-description: 交互式新建、编辑、停用或删除 AutoClip 频道。一步步引导用户定位主题、调研同类账号与可信来源、确定内容结构、挑选配色并预览封面，生成并校验 channel.json 与 brief.md，可试做一期样片，最后启用并给出定时任务。用户说"新建一个频道""加个频道做 XX""改一下 XX 频道""停用/删除 XX 频道""看看有哪些频道"时使用。
+name: autoreel-channel
+description: 交互式新建、编辑、停用或删除自影频道。一步步引导用户定位主题、调研同类账号与可信来源、确定内容结构、挑选配色并预览封面，生成并校验 channel.json 与 brief.md，可试做一期样片，最后启用并给出定时任务。用户说"新建一个频道""加个频道做 XX""改一下 XX 频道""停用/删除 XX 频道""看看有哪些频道"时使用。
 ---
 
-# AutoClip · 频道管理（交互式）
+# 自影 · 频道管理（交互式）
 
-全程用中文，像一位懂短视频运营的同事一样引导用户。频道定义在 `channels/<id>/`（`channel.json` + `brief.md`），启用列表在 `autoclip.config.json` 的 `channels` 里。
+全程用中文，像一位懂短视频运营的同事一样引导用户。频道定义在 `channels/<id>/`（`channel.json` + `brief.md`），启用列表在 `autoreel.config.json` 的 `channels` 里。
 
 ## 通用规则
 
@@ -14,7 +14,7 @@ description: 交互式新建、编辑、停用或删除 AutoClip 频道。一步
 - **每个关键决定都要有依据**：给推荐时附一句理由，必要时附上来源链接。
 - **改动仓库前先确认**：写文件、提交、推送之前，先把要做的改动列给用户看，用户同意后再执行。
 - 仓库根目录记为 `$REPO`，默认分支 `DEF=$(git -C $REPO remote show origin | sed -n 's/.*HEAD branch: //p')`。开始前先执行 `git -C $REPO pull -q origin $DEF`。
-- 预览和样片放在 `/tmp/autoclip-channel/<id>/`，用 SendUserFile 发给用户。
+- 预览和样片放在 `/tmp/autoreel-channel/<id>/`，用 SendUserFile 发给用户。
 
 先判断用户要做什么：**新建**、**编辑**、**停用 / 删除**，或者**查看**。说不清时，先运行 `python3 $REPO/tools/check_channel.py --all` 列出现有频道，再问。
 
@@ -58,12 +58,13 @@ description: 交互式新建、编辑、停用或删除 AutoClip 频道。一步
   - `date`：开场大字显示日期，适合「每日一 X」。
 - **时长**：资讯类 45–65 秒，讲解类 60–80 秒。用时长倒推每段字数，按每秒约 5 个字算。
 - **发布时间**：结合目标观众的作息给建议，例如上班族看午休和晚间，学生看放学后。制作时间要比发布时间早至少 45 分钟。
+- **画面偏好**：按内容推荐分镜类型（见 `autoreel` 技能的分镜表），例如资讯配地图和图表、读书配金句、好物只用用户素材。带货类不能用实拍素材冒充产品。
 - **人设语气**（`tone`）：用一句话描述，例如「像跟朋友聊天」「新闻主播式播报」。
 
 ### 第 4 步：挑配色（问 1 轮）
 1. 运行 `python3 $REPO/tools/check_channel.py --palettes` 查看预设配色，按主题挑 3 套最合适的。
 2. 先写一份草稿 `channel.json`（第 5 步的格式），运行
-   `python3 $REPO/tools/check_channel.py <id> --preview /tmp/autoclip-channel/<id> --palette 配色A,配色B,配色C`
+   `python3 $REPO/tools/check_channel.py <id> --preview /tmp/autoreel-channel/<id> --palette 配色A,配色B,配色C`
 3. 把生成的「配色对比」图发给用户，请用户选一套。用户都不喜欢，就照 `palettes.json` 的格式调一套新的：文字是白色，颜色要偏深，再出一次预览。
 
 ### 第 5 步：生成文件
@@ -91,21 +92,23 @@ description: 交互式新建、编辑、停用或删除 AutoClip 频道。一步
 - `topic` / `topic_say`：<开场大字和开场口播里的话题名怎么写>（hook 为 topic 时必须写）
 - `say`：<每段字数，语气参照 tone>
 - `detail` / `source`：<详细说明写什么，来源怎么标>
+
+**画面偏好**：<每类内容配什么分镜：footage 实拍、chart 图表、map 地图、timeline 时间线、quote 金句、asset 用户素材；哪些不能用>
 ```
 如果频道需要用户提供资料，就在 `inputs/<id>/` 下建一个 `示例.md` 示范格式。
 
 ### 第 6 步：校验
-运行 `python3 $REPO/tools/check_channel.py <id> --preview /tmp/autoclip-channel/<id>`。
+运行 `python3 $REPO/tools/check_channel.py <id> --preview /tmp/autoreel-channel/<id>`。
 - **错误**必须全部修好。
 - **提醒**逐条判断，能改的就改；不改的，告诉用户为什么。
 - 把最终的竖封面预览发给用户确认。
 
 ### 第 7 步：试做一期（推荐，问用户要不要）
-用 `autoclip` 技能按这个频道完整做一期，只到第 3 步「生成视频」，**不推送**。把成片发给用户。用户不满意，就回到对应步骤调整（结构、语气、配色、brief），再试一次。
+用 `autoreel` 技能按这个频道完整做一期，只到第 3 步「生成视频」，**不推送**。把成片发给用户。用户不满意，就回到对应步骤调整（结构、语气、配色、brief），再试一次。
 
 ### 第 8 步：启用（确认后执行）
-1. 把 `<id>` 加进 `autoclip.config.json` 的 `channels`。
-2. 把改动列给用户确认，然后执行 `git add channels/<id> inputs/<id> autoclip.config.json`、提交（提交信息写 `autoclip: 新建频道 <名称>`）、`git push origin $DEF`。
+1. 把 `<id>` 加进 `autoreel.config.json` 的 `channels`。
+2. 把改动列给用户确认，然后执行 `git add channels/<id> inputs/<id> autoreel.config.json`、提交（提交信息写 `autoreel: 新建频道 <名称>`）、`git push origin $DEF`。
 3. **定时任务**：如果当前环境有创建定时任务的工具，问用户要不要现在就按 `schedule.make` 建好。没有的话，给出可以直接粘贴的指令，格式见 `prompts/定时任务.md`。
 4. 提醒用户还要做的事：在抖音建同名合集（可选）；在插件设置里点「刷新频道列表」。
 
@@ -117,14 +120,14 @@ description: 交互式新建、编辑、停用或删除 AutoClip 频道。一步
 2. 问用户想改什么。用户说不清时，给几个常见方向供选择：内容方向、篇幅时长、发布时间、配色、语气人设、话题标签。
 3. 如果用户的意思是「播放量不好、想优化」，先调研同类账号近期的爆款做法，给 2–3 条具体建议，例如换开场形式、缩短时长、换选题角度。
 4. 改完运行 `check_channel.py <id> --preview …`，把前后的变化给用户看（配色变了就出对比图）。
-5. 用户确认后，提交（提交信息写 `autoclip: 修改频道 <名称>`）并推送。
+5. 用户确认后，提交（提交信息写 `autoreel: 修改频道 <名称>`）并推送。
    - 改了发布时间：提醒用户云端定时任务的制作时间也要一起调整。
    - 改了频道名或合集名：提醒用户在抖音里同步改合集名。
 
 ## 停用 / 删除频道
 
 先讲清楚两者的区别，让用户选：
-- **停用（推荐）**：只把它从 `autoclip.config.json` 的 `channels` 里移除，文件保留，以后可以随时恢复。
+- **停用（推荐）**：只把它从 `autoreel.config.json` 的 `channels` 里移除，文件保留，以后可以随时恢复。
 - **删除**：连 `channels/<id>/` 和 `inputs/<id>/` 一起删除，删除前要列出会被删的文件，并且必须得到用户明确确认。
 
 两种方式都要提醒用户：去 Claude Code 里停用或删除这个频道的定时任务（当前环境有相关工具的话，问用户要不要现在就处理）；已经发布的作品不受影响；中转仓库里的 `clip-*-<id>` 分支会在 7 天内被插件自动清理。

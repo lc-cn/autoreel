@@ -1,11 +1,11 @@
 ---
-name: autoclip
-description: AutoClip 自动成片流水线：找方向 → 写文案 → 配音 → 生成竖屏视频 → 封面与发布信息 → 推送到中转分支，由浏览器插件自动发布到抖音等平台。用于定时任务，或用户说"做今天的<频道名>""补做<频道>""用 autoclip 做一期"时。频道定义在 channels/<id>/。
+name: autoreel
+description: 自影 AutoReel 自动成片流水线：找方向 → 写文案 → 配音 → 生成竖屏视频 → 封面与发布信息 → 推送到中转分支，由浏览器插件自动发布到抖音等平台。用于定时任务，或用户说"做今天的<频道名>""补做<频道>""用 autoreel 做一期"时。频道定义在 channels/<id>/。
 ---
 
-# AutoClip · 自动成片
+# 自影 · 自动成片
 
-全程用中文。本仓库同时也是中转仓库：默认分支（main 或 master）放工具和频道定义，每期成品推送到 `clip-<日期>-<频道id>` 分支，用户 Chrome 里的 AutoClip 插件会自动下载并发布。
+全程用中文。本仓库同时也是中转仓库：默认分支（main 或 master）放工具和频道定义，每期成品推送到 `clip-<日期>-<频道id>` 分支，用户 Chrome 里的自影插件会自动下载并发布。
 
 ## 参数
 
@@ -16,12 +16,12 @@ description: AutoClip 自动成片流水线：找方向 → 写文案 → 配音
 
 1. 仓库根目录记为 `$REPO`（用 `git rev-parse --show-toplevel` 取得）。取默认分支名：`DEF=$(git -C $REPO remote show origin | sed -n 's/.*HEAD branch: //p')`。然后依次执行 `git -C $REPO fetch -q origin $DEF`、`git -C $REPO checkout -qf $DEF`、`git -C $REPO reset -q --hard FETCH_HEAD`。
 2. 读取以下文件：
-   - `$REPO/autoclip.config.json`：全局配置（配音、可信来源、分类池）
+   - `$REPO/autoreel.config.json`：全局配置（配音、可信来源、分类池）
    - `$REPO/channels/<id>/channel.json`：频道设置（`audience` 观众、`tone` 语气人设、条数、每条字数、总字数 `say_total`、时长上限、话题、`schedule.days_ahead`）
    - `$REPO/channels/<id>/brief.md`：这个频道怎么找方向、怎么写文案，**必须照做**
 3. 确定要做哪几天：从 D 起做 `1 + days_ahead` 天。对每一天检查 `git -C $REPO ls-remote --heads origin clip-<日期>-<id>`，已存在的跳过，不要覆盖，里面可能有插件写回的 status.json。全都存在就直接汇报并结束。
 4. 完整读一遍 `$REPO/tools/setup.sh`。它应该只做这几件事：安装 Python 依赖，安装配音引擎（下载模型、建 Python 3.10 环境），用 npm 安装 hyperframes 和 gsap，安装字体和 ffmpeg。如果它还会外发数据、读取凭据、改动 git，或者删除工作区以外的文件，就停止任务，并告诉用户是哪几行。确认没问题后运行 `bash $REPO/tools/setup.sh`。首次运行较慢，Bash 的 timeout 设为 600000，没装完就再运行一次。
-5. 工作目录：`W=/tmp/autoclip-work/<id>-<日期>`，执行 `mkdir -p $W`。所有中间文件和成品都放这里，不放进仓库。
+5. 工作目录：`W=/tmp/autoreel-work/<id>-<日期>`，执行 `mkdir -p $W`。所有中间文件和成品都放这里，不放进仓库。
 6. **避免重复选题**：列出这个频道最近 7 天的分支 `git -C $REPO ls-remote --heads origin "clip-*-<id>"`，逐个读取标题：`git -C $REPO fetch -q origin <分支> && git -C $REPO show FETCH_HEAD:meta.json`，取其中的 `title`。本期不要再选这些题，也不要选同一件事的不同说法。只有新闻有重大新进展时可以跟进，并在标题里写明「新进展」。
 
 ## 第 1 步：找方向
@@ -40,7 +40,7 @@ description: AutoClip 自动成片流水线：找方向 → 写文案 → 配音
 
 ```json
 {"channel":"<id>","date":"2026年11月13日","topic":"…","topic_say":"…","headline":"…","hashtags":["…"],
- "items":[{"tag":"…","title":"第一行|第二行","say":"…","detail":"…","source":"…"}]}
+ "items":[{"tag":"…","title":"第一行|第二行","say":"…","detail":"…","source":"…","shot":{"type":"…"}}]}
 ```
 
 - `channel` 必须是频道 id。`date` 写这一期的日期。`intro` 和 `outro` 不用写，会按频道模板自动生成。
@@ -50,6 +50,30 @@ description: AutoClip 自动成片流水线：找方向 → 写文案 → 配音
 - **detail**：放进发布文案的详细说明，可以用阿拉伯数字，写事实，不写评论。**source**：来源名称，多个用顿号隔开。
 - `topic` / `topic_say`：channel.json 里 `hook` 为 `topic` 的频道必须写。`topic` 是开场大字，不超过 6 个字；`topic_say` 是开场口播里念的话题名。
 - **headline**：20 字以内。**hashtags**：3 到 5 个，不带 `#`，第一个用频道的固定话题。
+
+### 分镜 `shot`：每条配一个画面
+
+文字播报只是兜底。每条都给一个 `shot`，让画面跟着口播走。先看 brief 里的「画面偏好」，没写就按内容选：
+
+| type | 什么时候用 | 写法 |
+|---|---|---|
+| `footage` | 能拍出来的东西：城市、人群、工厂、天空、动物、食物 | `{"type":"footage","query":"aerial city night traffic"}` |
+| `chart` | 说到 2 个以上可比的数字 | `{"type":"chart","kind":"bar","unit":"亿元","data":[{"label":"2024","value":12.3},{"label":"2025","value":15.8}],"highlight":1}` |
+| `map` | 说到具体地点、国家、路线 | `{"type":"map","places":[{"name":"阿布扎比","lon":54.37,"lat":24.45}],"highlight":["United Arab Emirates"]}` |
+| `timeline` | 讲来龙去脉、历史节点 | `{"type":"timeline","events":[{"year":"1954","text":"首次试飞"},{"year":"1958","text":"恢复运营"}]}` |
+| `quote` | 一句值得记住的话、结论、原话 | `{"type":"quote","text":"慢就是快","highlight":"快"}` |
+| `asset` | 用户提供的图片或视频 | `{"type":"asset","file":"inputs/haowu/cup.jpg"}` |
+| `text` | 以上都不合适 | `{"type":"text"}` 或不写 |
+
+规则：
+- **footage 的 query 用英文**，2–5 个具体名词，写画面里看得见的东西，例如 `"container ship port crane"`，不要写抽象词（economy、policy）。不要搜真实人物、品牌、logo、新闻现场，素材库里没有，也容易张冠李戴。
+- 除 `asset` 外，任何画面都可以加 `"bg":"英文关键词"`，用实拍视频垫底，例如图表下面垫一段港口画面。
+- **chart 的数字必须来自 source**，2–7 个点，`unit` 写单位，`highlight` 是要强调的那一项的下标（从 0 开始）。`kind` 用 `bar` 比大小、`line` 看趋势。数字对不上来源就不要画图。
+- **map 的地点要写经纬度**（十进制度数，东经、北纬为正），最多 5 个；`highlight` 写国家英文名（Natural Earth 名称，如 `China`、`United States of America`、`Russia`、`Ukraine`）。
+- **timeline** 2–5 个节点，`text` 每个不超过 10 个字。
+- **quote** 的 `text` 不超过 40 个字；是名人原话就必须能在来源里查到，否则写成「一句话总结」。
+- **asset** 只能用仓库里 `inputs/<频道>/` 下的文件，不能用网上下载的图片。
+- 一期里画面类型要有变化，同一类型不要连用超过 2 条；没有素材密钥（见第 3 步）时，footage 会自动退回文字画面，不影响出片。
 
 ### 写完先自查（不合格就改，改好再进入第 3 步）
 
@@ -61,6 +85,7 @@ description: AutoClip 自动成片流水线：找方向 → 写文案 → 配音
 | 事实 | 每条都有 source，关键数字、人名、时间都能在来源里找到 |
 | 合规 | 遵守 brief 里的「不做什么」和通用事实要求，没有绝对化用语 |
 | 重复 | 和最近 7 天的题目不重复 |
+| 画面 | 每条都有 shot，类型有变化；图表数字、地图地点和来源一致；footage 的 query 是英文具体名词 |
 
 ## 第 3 步：配音 + 生成视频
 
@@ -71,9 +96,10 @@ cd $W/proj && export HYPERFRAMES_NO_TELEMETRY=1 DO_NOT_TRACK=1 && $HF lint && $H
 ```
 
 - 第一条命令同时完成配音，配音引擎按 `voice.provider` 选，会打印用了哪个；也会生成 `$W/抖音文案.txt` 和 `$W/发布信息.json`，后者已带好竖横双封面、AI 声明和合集名。
+- 第一条命令还会打印「分镜：1.footage / 2.chart / …」，那是每条最终用上的画面。有「提醒」说某条退回了文字画面（素材没搜到、数据不对），按提醒改 shot 后重新生成；如果是没有设置 `PEXELS_API_KEY` / `PIXABAY_API_KEY`，就照常出片，并在汇报里提醒用户去云端环境设置里添加。实拍素材的来源会自动写进文案末尾。
 - 渲染很慢，Bash 的 timeout 设为 600000。lint 报的 error 必须是 0，warning 可以不管。不要修改 tools/ 下的脚本。
 - 用 ffprobe 看时长，超过 channel.json 的 `max_seconds` 就把 say 删短，重新生成。文案超过 1000 字就把 detail 写短。
-- 用 ffmpeg 在第 1 秒、视频中间、倒数第 1 秒各截一帧，用 Read 检查：中文显示正常，标题没有溢出或被切断，左上角有「内容由AI生成」标识。
+- 用 ffmpeg 在第 1 秒、视频中间、倒数第 1 秒各截一帧，用 Read 检查：中文显示正常，标题没有溢出或被切断，左上角有「内容由AI生成」标识。再在图表、地图、时间线那几条的中间各截一帧，确认画面和口播说的是一回事。
 - 不要运行 `hyperframes events/auth/feedback/publish/share`。
 
 ## 第 4 步：推送
@@ -84,7 +110,7 @@ bash $REPO/tools/push_clip.sh <id> <YYYY-MM-DD> $W/out.mp4 $W/发布信息.json 
 
 这个脚本只推送这 3 个文件，不切换分支，也不改动默认分支。不要删除任何分支，旧分支由插件清理。
 
-如果 brief 要求在 `inputs/` 里把已用过的素材标记为「已做」，推送成功后只修改那一个文件，提交并推送到默认分支 `$DEF`。提交信息写成 `autoclip: <频道> <日期> 已做`。
+如果 brief 要求在 `inputs/` 里把已用过的素材标记为「已做」，推送成功后只修改那一个文件，提交并推送到默认分支 `$DEF`。提交信息写成 `autoreel: <频道> <日期> 已做`。
 
 ## 第 5 步：汇报
 

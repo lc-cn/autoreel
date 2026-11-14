@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>AutoClip 设置</title>
+<title>自影 AutoReel · 设置</title>
 <link rel="stylesheet" href="ui.css" />
 <style>
   .hero { background: linear-gradient(135deg, #4b3dff 0%, #8a3ffc 55%, #d04a8c 100%); color: #fff; }
@@ -73,7 +73,7 @@
 </style>
 </head>
 <body>
-<div class="hero"><div class="hero-in"><img src="icons/128.png" alt="" /><div><h1>AutoClip 自动成片 · 设置</h1><p>每 5 分钟检查一次中转仓库，到点自动发布到已开启的平台。Chrome 开着即可。</p></div></div></div>
+<div class="hero"><div class="hero-in"><img src="icons/128.png" alt="" /><div><h1>自影 AutoReel · 设置</h1><p>每 5 分钟检查一次中转仓库，到点自动发布到已开启的平台。Chrome 开着即可。</p></div></div></div>
 <div class="wrap">
   <nav class="card">
     <a href="#basic" data-tab="basic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12h18M3 6h18M3 18h12"/></svg>基本设置</a>
@@ -101,7 +101,7 @@
       </section>
       <section class="card">
         <h2>发布时间</h2>
-        <p class="desc">北京时间，不早于此时间发布；视频还没就绪会继续等。默认值来自仓库里各频道的 channel.json（schedule.publish），在这里改只影响本机。频道的增减在仓库的 autoclip.config.json 里改。00:00 表示视频到了就发。</p>
+        <p class="desc">北京时间，不早于此时间发布；视频还没就绪会继续等。默认值来自仓库里各频道的 channel.json（schedule.publish），在这里改只影响本机。频道的增减在仓库的 autoreel.config.json 里改。00:00 表示视频到了就发。</p>
         <div class="grid3" id="timeList"></div>
         <div style="display:flex;gap:10px;align-items:center;margin-top:10px"><button class="btn sm" type="button" id="refreshCh">刷新频道列表</button><span class="help muted" id="chInfo"></span></div>
       </section>

@@ -1,12 +1,12 @@
 #!/bin/bash
-# AutoClip：安装依赖、配音引擎和 HyperFrames 渲染器。重复运行会跳过已装好的部分。
-# 安装哪种配音由 autoclip.config.json 的 voice.provider 决定：
+# 自影：安装依赖、配音引擎和 HyperFrames 渲染器。重复运行会跳过已装好的部分。
+# 安装哪种配音由 autoreel.config.json 的 voice.provider 决定：
 #   volcengine → 不用下载大模型；cosyvoice / auto → 安装 CosyVoice（约 2.5GB，首次 10–30 分钟）；sherpa → 下载轻量模型
 set -e
 cd "$(dirname "$0")"
 python3 -m pip install -q sherpa-onnx soundfile numpy pillow fonttools brotli rjieba 2>&1 | grep -v WARN || true
 python3 -m pip install -q --ignore-installed pillow 2>&1 | grep -v WARN || true  # 新环境自带的 Pillow 可能损坏
-cfg() { python3 -c "import json,os;p='../autoclip.config.json';c=json.load(open(p)) if os.path.exists(p) else {};v=c.get('voice',{});print($1)"; }
+cfg() { python3 -c "import json,os;p='../autoreel.config.json';c=json.load(open(p)) if os.path.exists(p) else {};v=c.get('voice',{});print($1)"; }
 PROVIDER=$(cfg "v.get('provider','auto')")
 APPID=$(cfg "v.get('volcengine',{}).get('app_id','')")
 COSY_MODEL=$(cfg "v.get('cosyvoice',{}).get('model','CosyVoice-300M-SFT')")
@@ -63,7 +63,10 @@ esac
 
 [ -f package.json ] || npm init -y >/dev/null
 [ -d node_modules/hyperframes ] || npm install -s hyperframes@0.9.37 gsap@3.15.0
+[ -d node_modules/world-atlas ] || npm install -s d3-geo@3.1.1 topojson-client@3.1.0 world-atlas@2.0.2
+command -v ffmpeg >/dev/null || { apt-get install -y -q ffmpeg >/dev/null 2>&1 || sudo apt-get install -y -q ffmpeg >/dev/null 2>&1 || true; }
 [ -f /usr/share/fonts/truetype/wqy/wqy-zenhei.ttc ] || { apt-get install -y -q fonts-wqy-zenhei >/dev/null 2>&1 || sudo apt-get install -y -q fonts-wqy-zenhei >/dev/null 2>&1 || true; }
 python3 -c "import sherpa_onnx, soundfile, fontTools, rjieba; from PIL import Image, ImageDraw; print('python 依赖 OK')"
 echo "配音引擎：$PROVIDER"
+if [ -n "$PEXELS_API_KEY$PIXABAY_API_KEY" ]; then echo "实拍素材：已配置"; else echo "实拍素材：未配置 PEXELS_API_KEY / PIXABAY_API_KEY，footage 分镜会退回文字画面"; fi
 HYPERFRAMES_NO_TELEMETRY=1 npx hyperframes --version

@@ -1,4 +1,4 @@
-// AutoClip · 多平台自动发布 —— 后台（调度、GitHub、通知、登录、保活）
+// 自影 · 多平台自动发布 —— 后台（调度、GitHub、通知、登录、保活）
 // 流程：每 5 分钟检查一次 → 到点的栏目从 GitHub 中转仓库下载视频 → 依次在抖音、视频号、快手的上传页里自动填写发布
 //      → 结果写回仓库 status.json，并按设置发浏览器通知 / Webhook。
 
@@ -645,7 +645,7 @@ async function getChannels(force = false) {
   if (!force && channels && Date.now() - channels.at < 30 * 60000) return channels.list;
   try {
     const raw = (p) => gh(`contents/${p}`, { accept: "application/vnd.github.raw" }).then((r) => r.json()); // 不带 ref = 仓库默认分支
-    const cfg = await raw("autoclip.config.json");
+    const cfg = await raw("autoreel.config.json");
     const list = [];
     for (const id of cfg.channels || []) {
       try {
@@ -722,7 +722,7 @@ async function tick({ manual = false } = {}) {
     const state = await getState();
     const tags = [];
     const SLOTS = await getChannels(manual);
-    if (!SLOTS.length && manual) await log("仓库的 autoclip.config.json 里没有启用任何频道");
+    if (!SLOTS.length && manual) await log("仓库的 autoreel.config.json 里没有启用任何频道");
     for (const slot of SLOTS) {
       if (hm < (s.times[slot.key] || slot.notBefore)) continue;
       const tag = channelTag(today, slot.key);

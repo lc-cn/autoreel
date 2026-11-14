@@ -1,8 +1,8 @@
-<p align="center"><img src="assets/logo.png" width="120" alt="AutoClip"></p>
+<p align="center"><img src="assets/logo.png" width="120" alt="自影 AutoReel"></p>
 
-# AutoClip 自动成片
+# 自影 AutoReel
 
-> **English:** AutoClip is an open-source, fully automated short-video pipeline for Chinese creators: **find a topic → write the script → voice it → render a vertical video → publish**. Claude Code cloud routines do the research and writing, voice it with Volcengine Doubao TTS (the same voices used across Douyin/CapCut) or offline CosyVoice, render with [HyperFrames](https://github.com/heygen-com/hyperframes), then push to a private GitHub repo. A Chrome extension downloads each clip and publishes it to Douyin (WeChat Channels / Kuaishou optional), with QR-code login, session keep-alive, verification prompts and templated webhooks (WeCom, Feishu, DingTalk, OneBot 11/12, Bark, Telegram …). Channels are plain folders, so you can add your own. Docs are in Chinese.
+> **English:** AutoReel (自影) is an open-source, fully automated short-video pipeline for Chinese creators: **find a topic → write the script → voice it → render a vertical video → publish**. Claude Code cloud routines do the research and writing, voice it with Volcengine Doubao TTS (the same voices used across Douyin/CapCut) or offline CosyVoice, storyboard every segment (royalty-free stock footage from Pexels/Pixabay, animated charts, offline maps, timelines, quote cards or your own assets), render with [HyperFrames](https://github.com/heygen-com/hyperframes), then push to a private GitHub repo. A Chrome extension downloads each clip and publishes it to Douyin (WeChat Channels / Kuaishou optional), with QR-code login, session keep-alive, verification prompts and templated webhooks (WeCom, Feishu, DingTalk, OneBot 11/12, Bark, Telegram …). Channels are plain folders, so you can add your own. Docs are in Chinese.
 
 一条从**找方向 → 写文案 → 配音 → 生成视频 → 发作品**全自动跑完的短视频流水线。每个「频道」就是一个文件夹，定义好主题和规则，每天自动出片、自动发布。
 
@@ -18,26 +18,43 @@
 | 好物推荐 `haowu` | 一件产品的看点 | **只用你提供的资料** `inputs/haowu/` |
 | 每天一个成语 `chengyu` | 一个成语的出处、故事、用法 | 成语词典、典籍原文 |
 
-想做别的主题？在 Claude Code 里对仓库说一句「**新建一个频道，讲 XX**」，`autoclip-channel` 技能会一步步引导你：调研同类账号和可信来源、定结构和语气、并排比较几套配色、自动校验、试做一期，最后启用并建好定时任务。也可以手动复制一个频道文件夹修改，详见 [docs/新建频道.md](docs/新建频道.md)。
+想做别的主题？在 Claude Code 里对仓库说一句「**新建一个频道，讲 XX**」，`autoreel-channel` 技能会一步步引导你：调研同类账号和可信来源、定结构和语气、并排比较几套配色、自动校验、试做一期，最后启用并建好定时任务。也可以手动复制一个频道文件夹修改，详见 [docs/新建频道.md](docs/新建频道.md)。
 
 ## 工作原理
 
 ```
 Claude Code 云端定时任务（每个频道每天一次）
-  └─ autoclip 技能
+  └─ autoreel 技能
        ① 找方向：按频道 brief 搜索 / 读你的素材，事实需有来源
-       ② 写文案：统一格式的分段稿（画面标题 / 口播 / 详细说明 / 来源）
+       ② 写文案 + 分镜：每段配一个画面（实拍 / 图表 / 地图 / 时间线 / 金句 / 你的素材）
        ③ 配音：火山引擎豆包语音（抖音同款音色）或 CosyVoice 离线配音
-       ④ 生成视频：HyperFrames 渲染 1080×1920 竖屏，字幕、动效、「内容由AI生成」标识
+       ④ 生成视频：按分镜取素材、画图表和地图，HyperFrames 渲染 1080×1920 竖屏，带字幕和「内容由AI生成」标识
        ⑤ 封面与发布信息：竖横双封面、标题、正文、话题、合集、AI 声明
   └─ 推送到你的私有仓库 clip-日期-频道 分支
-        └─ Chrome 插件「AutoClip」到点自动发布到抖音（视频号 / 快手可选）
+        └─ Chrome 插件「自影 AutoReel」到点自动发布到抖音（视频号 / 快手可选）
               └─ 结果写回仓库，浏览器通知 / Webhook 告诉你
 ```
 
 - **不需要服务器**：生成在 Claude Code 云端，发布在你自己的 Chrome 里，中间用私有 GitHub 仓库当"信箱"。
 - **用你自己的浏览器发布**：登录状态是你自己的，插件只操作它自己打开的窗口。
 - **需要你时会叫你**：短信 / 滑块验证、登录失效、发布失败，都会通知你（可推到手机、QQ 群、企业微信群）。
+
+## 画面：不只是文字播报
+
+每一段口播都配一个分镜，AI 按内容自动挑：
+
+| 分镜 | 适合 | 画面 |
+|---|---|---|
+| 实拍 `footage` | 城市、自然、工业、生活场景 | 按英文关键词从 **Pexels / Pixabay** 取免版权竖屏视频，自动裁切、调速、去原声，文案末尾自动注明来源 |
+| 图表 `chart` | 涨跌、对比、排名 | 柱状图 / 折线图，数字逐个长出，重点项高亮 |
+| 地图 `map` | 地点、国家、路线 | 离线绘制的区域地图（Natural Earth 数据），自动框选范围、标注地点、高亮国家 |
+| 时间线 `timeline` | 来龙去脉、历史节点 | 2–5 个节点依次出现 |
+| 金句 `quote` | 原话、结论 | 大字逐字出现，关键字高亮 |
+| 你的素材 `asset` | 产品图、实拍 | `inputs/<频道>/` 里的图片或视频 |
+
+图表、地图等画面还能叠一层实拍视频做背景。任何一个分镜出错（素材没搜到、数据有误）都会自动退回文字画面，不会出不了片。实拍素材需要免费的 Pexels / Pixabay 密钥，配置方法见[部署指南](docs/部署指南.md#第-4-步实拍素材可选推荐)。
+
+<p align="center"><img src="docs/images/shots.jpg" width="720" alt="分镜示例：图表、地图、时间线、金句"></p>
 
 ## 配音
 
@@ -54,10 +71,11 @@ Claude Code 云端定时任务（每个频道每天一次）
 完整步骤见 **[docs/部署指南.md](docs/部署指南.md)**：
 
 1. **Use this template → Create a new repository**，**选 Private**。
-2. 改 `autoclip.config.json`：启用哪些频道、配音方案。
-3. 生成只对这个仓库有 **Contents 读写** 权限的 GitHub 令牌。
-4. 在 [Claude Code 网页版](https://claude.ai/code) 用这个仓库为每个频道创建定时任务（指令见 [prompts/定时任务.md](prompts/定时任务.md)）。
-5. Chrome 加载 `extension/`，填仓库和令牌，扫码登录抖音。
+2. 改 `autoreel.config.json`：启用哪些频道、配音方案。
+3. （可选）申请免费的 Pexels / Pixabay 密钥，填进云端环境变量，开启实拍素材。
+4. 生成只对这个仓库有 **Contents 读写** 权限的 GitHub 令牌。
+5. 在 [Claude Code 网页版](https://claude.ai/code) 用这个仓库为每个频道创建定时任务（指令见 [prompts/定时任务.md](prompts/定时任务.md)）。
+6. Chrome 加载 `extension/`，填仓库和令牌，扫码登录抖音。
 
 ## 使用前请务必了解
 
@@ -73,11 +91,15 @@ Claude Code 云端定时任务（每个频道每天一次）
 |---|---|
 | `channels/<频道>/` | 频道定义：`channel.json`（设置）+ `brief.md`（找方向、写文案的规则） |
 | `inputs/` | 需要你提供素材的频道（书单、产品资料） |
-| `.claude/skills/autoclip/` | 出片技能（各频道通用）：找方向 → 写文案 → 自查 → 配音 → 生成视频 → 推送 |
-| `.claude/skills/autoclip-channel/` | 频道管理技能：交互式新建、编辑、停用频道 |
-| `tools/` | `gen_hf.py` 生成视频工程和文案、`tts.py` 配音、`make_cover.py` 封面、`check_channel.py` 频道检查与预览、`palettes.json` 配色预设、`push_clip.sh` 推送、`setup.sh` 安装 |
+| `.claude/skills/autoreel/` | 出片技能（各频道通用）：找方向 → 写文案 → 自查 → 配音 → 生成视频 → 推送 |
+| `.claude/skills/autoreel-channel/` | 频道管理技能：交互式新建、编辑、停用频道 |
+| `tools/` | `gen_hf.py` 生成视频工程和文案、`scenes.py` 分镜画面、`footage.py` 实拍素材、`mapsvg.mjs` 地图、`tts.py` 配音、`make_cover.py` 封面、`check_channel.py` 频道检查与预览、`palettes.json` 配色预设、`push_clip.sh` 推送、`setup.sh` 安装 |
 | `extension/` | Chrome 插件（Manifest V3） |
 | `prompts/` | 定时任务指令模板 |
+
+## 名字
+
+本项目原名 AutoClip，为了避免和 GitHub 上同名的视频切片项目混淆，改名为**自影 AutoReel**。
 
 ## 许可
 

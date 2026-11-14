@@ -9,3 +9,5 @@
 - `topic` 写书名，不超过 6 个字，太长就用简称。
 - `topic_say` 写「作者 + 《书名》」。
 - `source` 写书名和出版社。
+
+**画面偏好**：书里的原话用 `quote`（必须是书中原文），阅读氛围用 `footage`（如 "reading book window light"），书的创作背景可用 `timeline`。

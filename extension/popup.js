@@ -119,7 +119,7 @@ async function render() {
     row.querySelector(".more").onclick = (e) => openMenu(e, s);
     S.appendChild(row);
   }
-  if (!SLOTS.length) S.innerHTML = '<div class="muted" style="padding:8px 0">还没有读取到频道。确认仓库的 autoclip.config.json 里 channels 不为空，然后点「立即运行」。</div>';
+  if (!SLOTS.length) S.innerHTML = '<div class="muted" style="padding:8px 0">还没有读取到频道。确认仓库的 autoreel.config.json 里 channels 不为空，然后点「立即运行」。</div>';
   $("today").textContent = `${date}${lastTick ? ` · ${lastTick.slice(11, 16)} 检查过` : ""}`;
   $("logs").textContent = logs.slice(-60).reverse().join("\n") || "暂无日志";
 }

@@ -1,4 +1,4 @@
-"""AutoClip · 检查频道配置并生成预览
+"""自影 · 检查频道配置并生成预览
 
 用法:
   python3 tools/check_channel.py <频道id>                    只检查
@@ -15,7 +15,7 @@ import re
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-ROOT = os.path.abspath(os.environ.get("AUTOCLIP_ROOT") or os.path.join(HERE, ".."))
+ROOT = os.path.abspath(os.environ.get("AUTOREEL_ROOT") or os.path.join(HERE, ".."))
 HEX = re.compile(r"^#[0-9a-fA-F]{6}$")
 HM = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
 PLACEHOLDERS = {"name", "date", "n", "topic_say", "categories"}
@@ -143,9 +143,9 @@ def check(cid):
                 errs.append(f"brief.md 缺少「{kw}」部分")
         if len(txt) < 200:
             warns.append("brief.md 太短，AI 可能不知道怎么选题，建议写清素材来源、选题标准、不做什么、分段思路")
-    cfgf = os.path.join(ROOT, "autoclip.config.json")
+    cfgf = os.path.join(ROOT, "autoreel.config.json")
     if os.path.exists(cfgf) and cid not in (json.load(open(cfgf, encoding="utf-8")).get("channels") or []):
-        warns.append("这个频道还没有在 autoclip.config.json 的 channels 里启用")
+        warns.append("这个频道还没有在 autoreel.config.json 的 channels 里启用")
     return errs, warns, c
 
 

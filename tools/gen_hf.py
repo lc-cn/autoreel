@@ -1,12 +1,13 @@
-"""AutoClip · 生成视频工程（配音 + HyperFrames 竖屏工程 + 封面 + 发布文案）
+"""自影 · 生成视频工程（配音 + HyperFrames 竖屏工程 + 封面 + 发布文案）
 用法: python3 gen_hf.py <script.json> <工程目录>
-稿子里的 channel 字段决定用哪个频道（channels/<id>/channel.json）；配音方案见 autoclip.config.json 的 voice。
+稿子里的 channel 字段决定用哪个频道（channels/<id>/channel.json）；配音方案见 autoreel.config.json 的 voice。
 """
 import sys, os, json, re, html, shutil
 import soundfile as sf
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import tts
+import scenes as SC
 
 COLORS = {"国际": "#ff5c5c", "国内": "#ff8a4c", "时政": "#ff8a4c", "外交": "#9a7cff", "财经": "#ffb840",
           "科技": "#40c8ff", "体育": "#4fdc8c", "娱乐": "#ff6eb4", "社会": "#f2d14b", "健康": "#5ee0c8",
@@ -17,7 +18,7 @@ PALETTE = ["#ff5c5c", "#40c8ff", "#4fdc8c", "#ffb840", "#9a7cff", "#ff6eb4"]
 # 每个栏目的名字、配色、开场和结尾。画面布局相同，配色和文案不同，一眼能分清栏目。
 # ───────── 频道与全局配置 ─────────
 # 每个频道一个文件夹：channels/<id>/channel.json（名字、配色、开场结尾、发布时间……）+ brief.md（怎么找方向、写文案）
-ROOT = os.path.abspath(os.environ.get("AUTOCLIP_ROOT") or os.path.join(HERE, ".."))
+ROOT = os.path.abspath(os.environ.get("AUTOREEL_ROOT") or os.path.join(HERE, ".."))
 LEGACY = {"kuaibao": "kuaibao", "jiangtou": "jiangtou", "lishi": "lishi"}  # 旧稿子里的 series 字段
 
 
@@ -35,7 +36,7 @@ def load_channels():
 
 
 def load_config():
-    f = os.environ.get("AUTOCLIP_CONFIG") or os.path.join(ROOT, "autoclip.config.json")
+    f = os.environ.get("AUTOREEL_CONFIG") or os.path.join(ROOT, "autoreel.config.json")
     return json.load(open(f, encoding="utf-8")) if os.path.exists(f) else {}
 
 
@@ -203,26 +204,14 @@ def build(data, times, dur, proj, spoken):
     agenda = "".join(f'<li class="ag c{i}" id="ag{i}"><span class="num">{i + 1}</span><span class="agt">{E(it["title"].replace("|", ""))}</span></li>' for i, it in enumerate(items))
     follow_top = 580 + n * 104 + (n - 1) * 26 + 80
 
-    scenes, js = [], []
+    # 分镜：每段按 shot 渲染（文字 / 实拍素材 / 图表 / 地图 / 时间线 / 金句 / 你的素材），失败自动退回文字镜头
+    ctx = SC.Ctx(proj, ROOT, os.environ.get("AUTOREEL_CACHE", "/tmp/ziying-footage-cache"))
+    scenes, bgs, js, kinds = [], [], [], []
     for i, it in enumerate(items):
-        s, e = starts[i], ends[i]
-        lines = split_title(it["title"])
-        tl_html = "".join(f'<div class="tline" id="s{i}-l{k}">' + "".join(f'<span class="ch">{E(c)}</span>' for c in ln) + "</div>" for k, ln in enumerate(lines))
-        scenes.append(f'''
-      <div id="scene{i}" class="clip scene c{i}" data-start="{T(s)}" data-duration="{T(e - s)}" data-track-index="2">
-        <div class="ghost" id="s{i}-ghost">0{i + 1}</div>
-        <div class="meta" id="s{i}-meta"><span class="tag">{E(it["tag"])}</span><span class="idx">0{i + 1} / 0{n}</span></div>
-        <div class="title" id="s{i}-title">{tl_html}</div>
-        <div class="bar" id="s{i}-bar"></div>
-      </div>''')
-        js.append(f'''
-      tl.fromTo("#s{i}-ghost", {{x: 160, opacity: 0}}, {{x: 0, opacity: 1, duration: 0.6, ease: "expo.out"}}, {T(s)});
-      tl.fromTo("#s{i}-meta", {{y: 40, opacity: 0}}, {{y: 0, opacity: 1, duration: 0.35, ease: "power3.out"}}, {T(s + 0.05)});
-      tl.fromTo("#scene{i} .ch", {{y: 70, opacity: 0, scale: 0.8}}, {{y: 0, opacity: 1, scale: 1, duration: 0.32, ease: "back.out(2)", stagger: 0.035}}, {T(s + 0.12)});
-      tl.fromTo("#s{i}-bar", {{scaleX: 0}}, {{scaleX: 1, duration: 0.5, ease: "power2.inOut"}}, {T(s + 0.3)});
-      tl.fromTo("#s{i}-title", {{scale: 1}}, {{scale: 1.04, duration: {T(e - s - 0.6)}, ease: "none"}}, {T(s + 0.5)});
-      tl.to("#s{i}-title, #s{i}-meta, #s{i}-ghost, #s{i}-bar", {{y: -60, opacity: 0, duration: 0.2, ease: "power2.in"}}, {T(e - 0.2)});
-      tl.fromTo("#pg{i}", {{scaleX: 0}}, {{scaleX: 1, duration: {T(e - s)}, ease: "none"}}, {T(s)});''')
+        h, bg, sj, kind = SC.render(i, n, it, starts[i], ends[i], S, ctx, split_title)
+        scenes.append(h); bgs.append(bg); js.extend(sj); kinds.append(kind)
+    build.ctx = ctx
+    build.kinds = kinds
 
     # 字幕：每句切短语，一次只显示一组
     caps, k = [], 0
@@ -239,7 +228,7 @@ def build(data, times, dur, proj, spoken):
       tl.fromTo("#follow", {{scale: 0.6, opacity: 0}}, {{scale: 1, opacity: 1, duration: 0.45, ease: "back.out(2.2)"}}, {T(out_start + 0.5)});''')
 
     progress = "".join(f'<div class="pgs c{i}"><div class="pgf" id="pg{i}"></div></div>' for i in range(n))
-    all_text = data["date"] + data["intro"] + data["outro"] + "".join(it["tag"] + it["title"] + it["say"] for it in items) + "内容由AI生成热点快报今日大热点关注我每天一分钟看懂天下事信息来源公开报道本期涉及条一二三四五六七八九十月日这" + "".join(S[k] for k in ("name", "slogan", "label", "src")) + data.get("topic", "")
+    all_text = data["date"] + data["intro"] + data["outro"] + "".join(it["tag"] + it["title"] + it["say"] for it in items) + "内容由AI生成热点快报今日大热点关注我每天一分钟看懂天下事信息来源公开报道本期涉及条一二三四五六七八九十月日这" + "".join(S[k] for k in ("name", "slogan", "label", "src")) + data.get("topic", "") + "".join(ctx.chars) + "单位："
     os.makedirs(f"{proj}/assets/fonts", exist_ok=True)
     subset_font("".join(sorted(set(all_text))), f"{proj}/assets/fonts/zh.woff2")
     shutil.copy(GSAP, f"{proj}/assets/gsap.min.js")
@@ -311,6 +300,7 @@ def build(data, times, dur, proj, spoken):
                 padding: 22px; border-radius: 999px; background: #ff4646; }}
       #ailabel {{ position: absolute; left: 80px; top: 120px; font-size: 28px; color: rgba(255,255,255,0.92); padding: 6px 18px;
                  border: 2px solid rgba(255,255,255,0.55); border-radius: 12px; background: rgba(0,0,0,0.22); letter-spacing: 2px; }}
+{SC.CSS}
       #src {{ position: absolute; right: 180px; top: 1372px; font-size: 28px; color: rgba(255,255,255,0.88); text-shadow: 0 1px 6px rgba(0,0,0,0.4); }}
     </style>
   </head>
@@ -322,6 +312,7 @@ def build(data, times, dur, proj, spoken):
         <div class="glow" id="glowC"></div><div class="glow" id="glowD"></div><div id="shade"></div><div id="grid"></div>
         <div id="deco" data-layout-ignore>{S["deco"]}</div>
       </div>
+      {"".join(bgs)}
       <div id="ailabel" class="clip" data-start="0" data-duration="{T(dur)}" data-track-index="4">内容由AI生成</div>
       <div id="head" class="clip" data-start="0" data-duration="{T(dur)}" data-track-index="1">
         <div class="mark"></div><div><h1>{S["name"]}</h1><div class="date">{E(data["date"])} · {E(S["slogan"])}</div></div>
@@ -377,7 +368,7 @@ def main():
     sf.write(f"{proj}/assets/voice.wav", audio, sr)
     build(data, times, dur, proj, lines)
     if not os.path.exists(f"{proj}/hyperframes.json"):
-        json.dump({"name": "autoclip"}, open(f"{proj}/hyperframes.json", "w"))
+        json.dump({"name": "autoreel"}, open(f"{proj}/hyperframes.json", "w"))
     cap = make_caption(data)
     cap_path = os.path.join(os.path.dirname(os.path.abspath(src)), "抖音文案.txt")
     open(cap_path, "w").write(cap)
@@ -386,6 +377,16 @@ def main():
     md = f"{int(m.group(1))}月{int(m.group(2))}日" if m else ""
     head = data.get("headline") or "、".join(it["title"].replace("|", "") for it in data["items"][:2])
     tags = [t.lstrip("#") for t in (data.get("hashtags") or S["hashtags"] + categories(data["items"]))]
+    ctx = getattr(build, "ctx", None)
+    if ctx and ctx.credits:  # 实拍素材署名：写进文案（来源行之后）
+        lines_ = cap.split("\n")
+        lines_.insert(len(lines_) - 1, "🎬 画面素材：" + "、".join(dict.fromkeys(ctx.credits)) + "（免版权素材）")
+        cap = "\n".join(lines_)
+        open(cap_path, "w").write(cap)
+    for w in (ctx.warnings if ctx else []):
+        print(f"提醒：{w}")
+    if ctx:
+        print("分镜：" + " / ".join(f"{i + 1}.{k}" for i, k in enumerate(build.kinds)))
     meta = {"title": f"{S['name']}{md}｜{head}"[:30], "desc": cap.rsplit("\n", 1)[0], "tags": tags[:5],
             "declaration": (CONFIG.get("publish") or {}).get("declaration", "内容由AI生成"), "collection": S.get("collection", S["name"]),
             "channel": S["id"]}

@@ -1,4 +1,4 @@
-// AutoClip 插件各部分共用的常量
+//自影插件各部分共用的常量
 export const PLATFORMS = {
   douyin: {
     name: "抖音",
@@ -20,7 +20,7 @@ export const PLATFORMS = {
   },
 };
 export const ORDER = ["douyin", "channels", "kuaishou"];
-// 频道列表不再写死：插件从仓库默认分支读取 autoclip.config.json 和 channels/<id>/channel.json。
+// 频道列表不再写死：插件从仓库默认分支读取 autoreel.config.json 和 channels/<id>/channel.json。
 // 每期成品的分支名：clip-<日期>-<频道id>
 export const channelTag = (date, id) => `clip-${date}-${id}`;
 export const MAX_ATTEMPTS = 3;
@@ -48,17 +48,17 @@ export const VARS = [
   ["date", "日期，如 2026-11-12"],
   ["time", "时间，如 2026-11-12 19:05:03"],
 ];
-export const DEFAULT_TEXT = "{{emoji}} {{title}}\n{{message}}\n—— AutoClip · {{time}}";
+export const DEFAULT_TEXT = "{{emoji}} {{title}}\n{{message}}\n—— 自影 · {{time}}";
 
 // 每个预设：url / method / 内容类型 / 请求头（JSON）/ 消息体模板
 export const PRESETS = {
   wecom: { label: "企业微信群机器人", url: "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=你的key", body: '{"msgtype":"text","text":{"content":"{{text}}"}}' },
   feishu: { label: "飞书群机器人", url: "https://open.feishu.cn/open-apis/bot/v2/hook/你的token", body: '{"msg_type":"text","content":{"text":"{{text}}"}}' },
-  dingtalk: { label: "钉钉群机器人", url: "https://oapi.dingtalk.com/robot/send?access_token=你的token", body: '{"msgtype":"text","text":{"content":"{{text}}"}}', tip: "安全设置选「自定义关键词」，填：AutoClip" },
+  dingtalk: { label: "钉钉群机器人", url: "https://oapi.dingtalk.com/robot/send?access_token=你的token", body: '{"msgtype":"text","text":{"content":"{{text}}"}}', tip: "安全设置选「自定义关键词」，填：自影" },
   onebot11_group: { label: "OneBot 11 · 群消息", url: "http://127.0.0.1:5700/send_group_msg", headers: '{"Authorization": "Bearer 你的access_token"}', body: '{"group_id": 123456789, "message": "{{text}}"}', tip: "go-cqhttp / NapCat / Lagrange / LLOneBot 等的 HTTP 接口；没设 access_token 就把请求头清空" },
   onebot11_private: { label: "OneBot 11 · 私聊", url: "http://127.0.0.1:5700/send_private_msg", headers: '{"Authorization": "Bearer 你的access_token"}', body: '{"user_id": 123456789, "message": "{{text}}"}' },
   onebot12: { label: "OneBot 12 · 发送消息", url: "http://127.0.0.1:5700/", headers: '{"Authorization": "Bearer 你的access_token"}', body: '{"action": "send_message", "params": {"detail_type": "group", "group_id": "123456789", "message": [{"type": "text", "data": {"text": "{{text}}"}}]}, "echo": "kuaibao"}', tip: "detail_type 可改为 private（配 user_id）或 channel（配 guild_id、channel_id）" },
-  bark: { label: "Bark（iPhone 推送）", url: "https://api.day.app/你的key", body: '{"title": "{{title}}", "body": "{{message}}", "group": "AutoClip"}' },
+  bark: { label: "Bark（iPhone 推送）", url: "https://api.day.app/你的key", body: '{"title": "{{title}}", "body": "{{message}}", "group": "AutoReel"}' },
   serverchan: { label: "Server酱（微信推送）", url: "https://sctapi.ftqq.com/你的SendKey.send", body: '{"title": "{{title}}", "desp": "{{message}}\\n\\n{{time}}"}' },
   telegram: { label: "Telegram Bot", url: "https://api.telegram.org/bot你的token/sendMessage", body: '{"chat_id": "你的chat_id", "text": "{{text}}"}' },
   generic: { label: "自定义（通用 JSON）", url: "https://", body: '{"event": "{{event}}", "platform": "{{platform}}", "slot": "{{slot}}", "title": "{{title}}", "message": "{{message}}", "video_title": "{{video_title}}", "time": "{{time}}"}' },

@@ -1,6 +1,6 @@
 # 第三方组件与授权
 
-AutoClip 自身代码以 MIT 协议发布。以下第三方组件在运行时由 `tools/setup.sh` 下载或调用，本仓库**不包含**它们的副本，它们各自遵循自己的协议。
+自影自身代码以 MIT 协议发布。以下第三方组件在运行时由 `tools/setup.sh` 下载或调用，本仓库**不包含**它们的副本，它们各自遵循自己的协议。
 
 ## 运行时依赖
 
@@ -11,6 +11,9 @@ AutoClip 自身代码以 MIT 协议发布。以下第三方组件在运行时由
 | [CosyVoice](https://github.com/FunAudioLLM/CosyVoice) | 离线语音合成（代码与模型） | Apache-2.0 |
 | [PyTorch](https://pytorch.org/) | CosyVoice 运行环境 | BSD-3-Clause |
 | [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) | 轻量离线语音合成 | Apache-2.0 |
+| [d3-geo](https://github.com/d3/d3-geo)、[topojson-client](https://github.com/topojson/topojson-client) | 地图投影与边界解析 | ISC |
+| [world-atlas](https://github.com/topojson/world-atlas) | 世界地图数据，源自 [Natural Earth](https://www.naturalearthdata.com/) | ISC；Natural Earth 数据为公有领域 |
+| [FFmpeg](https://ffmpeg.org/) | 素材裁剪、转码 | LGPL-2.1+ / GPL（取决于系统构建） |
 | [文泉驿正黑](http://wenq.org/) | 中文字体 | GPL-2.0（附字体嵌入例外） |
 | fontTools、Pillow、NumPy、soundfile、rjieba 等 | Python 工具库 | 各自开源协议 |
 
@@ -23,6 +26,15 @@ AutoClip 自身代码以 MIT 协议发布。以下第三方组件在运行时由
 | sherpa · Kokoro | [Kokoro-82M-v1.1-zh](https://huggingface.co/hexgrad/Kokoro-82M-v1.1-zh)，Apache-2.0；训练语料来自龙猫数据（LongMaoData），我们未找到语料的单独授权说明 |
 | sherpa · MeloTTS | MIT |
 | sherpa · baker | 模型代码 Apache-2.0；**训练数据为标贝中文标准女声语音库，仅授权非商业使用，不建议商用** |
+
+## 画面素材
+
+| 来源 | 授权说明 |
+|---|---|
+| [Pexels](https://www.pexels.com/license/) | Pexels License：可免费商用、可修改、无需署名；不得把未经修改的素材单独售卖，不得暗示画面中的人物或品牌为你背书 |
+| [Pixabay](https://pixabay.com/service/license-summary/) | Pixabay Content License：可免费商用、可修改、无需署名；不得单独售卖或分发未修改的素材，含可识别人物、商标的画面不得用于误导性用途 |
+
+两家都不强制署名，自影仍会在发布文案末尾注明「画面素材：Pexels / Pixabay」及作者。API 密钥需要你自己注册申请，素材的具体使用以两家最新的许可条款为准。
 
 ## 参考的开源项目
 

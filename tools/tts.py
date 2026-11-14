@@ -1,6 +1,6 @@
-"""AutoClip · 配音（可替换的语音合成）
+"""自影 · 配音（可替换的语音合成）
 
-在 autoclip.config.json 的 voice.provider 里选择：
+在 autoreel.config.json 的 voice.provider 里选择：
   volcengine  火山引擎豆包语音（抖音、剪映同源音色；需要密钥，按量付费，可商用）
   cosyvoice   CosyVoice 离线配音（阿里开源，Apache-2.0；无显卡时较慢）
   sherpa      sherpa-onnx 轻量离线配音（kokoro / melo / baker，速度最快）
@@ -53,7 +53,7 @@ def volc_available(v):
 
 def _volc_one(text, c):
     body = {
-        "user": {"uid": "autoclip"},
+        "user": {"uid": "autoreel"},
         "req_params": {
             "text": text,
             "speaker": c["speaker"],

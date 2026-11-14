@@ -272,7 +272,7 @@ $("refreshCh").onclick = async () => {
   $("chInfo").textContent = "读取中…";
   const r = await chrome.runtime.sendMessage({ type: "refreshChannels" });
   await renderTimes();
-  toast(r && r.list && r.list.length ? `读取到 ${r.list.length} 个频道` : "没有读取到频道，请检查仓库、令牌和 autoclip.config.json");
+  toast(r && r.list && r.list.length ? `读取到 ${r.list.length} 个频道` : "没有读取到频道，请检查仓库、令牌和 autoreel.config.json");
 };
 
 // ───── 备份与迁移 ─────
@@ -282,7 +282,7 @@ $("exportCfg").onclick = async () => {
   if (!$("exportTok").checked) delete out.token;
   const a = document.createElement("a");
   a.href = URL.createObjectURL(new Blob([JSON.stringify(out, null, 2)], { type: "application/json" }));
-  a.download = `AutoClip-设置-${nowStamp().slice(0, 10)}.json`;
+  a.download = `AutoReel-设置-${nowStamp().slice(0, 10)}.json`;
   a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 2000);
 };

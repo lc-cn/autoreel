@@ -11,6 +11,6 @@ cd "$(git rev-parse --show-toplevel)"
 if git ls-remote --exit-code --heads origin "$B" >/dev/null 2>&1; then echo "远端已有 $B，跳过（不覆盖）"; exit 0; fi
 tree=$(printf "100644 blob %s\tcaption.txt\n100644 blob %s\tmeta.json\n100644 blob %s\tvideo.mp4\n" \
   "$(git hash-object -w "$C")" "$(git hash-object -w "$M")" "$(git hash-object -w "$V")" | git mktree)
-commit=$(git -c user.name="autoclip-bot" -c user.email="autoclip-bot@users.noreply.github.com" commit-tree "$tree" -m "$B")
+commit=$(git -c user.name="autoreel-bot" -c user.email="autoreel-bot@users.noreply.github.com" commit-tree "$tree" -m "$B")
 git push origin "$commit:refs/heads/$B"
 echo "已推送 $B（$(du -h "$V" | cut -f1)）"
