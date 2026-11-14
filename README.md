@@ -2,7 +2,7 @@
 
 # 自影 AutoReel
 
-> **English:** AutoReel (自影) is an open-source, fully automated short-video pipeline for Chinese creators: **find a topic → write the script → voice it → render a vertical video → publish**. Claude Code cloud routines do the research and writing, voice it with Volcengine Doubao TTS (the same voices used across Douyin/CapCut) or offline CosyVoice, storyboard every segment (royalty-free stock footage from Pexels/Pixabay, animated charts, offline maps, timelines, quote cards or your own assets), render with [HyperFrames](https://github.com/heygen-com/hyperframes), then push to a private GitHub repo. A Chrome extension downloads each clip and publishes it to Douyin (WeChat Channels / Kuaishou optional), with QR-code login, session keep-alive, verification prompts and templated webhooks (WeCom, Feishu, DingTalk, OneBot 11/12, Bark, Telegram …). Channels are plain folders, so you can add your own. Docs are in Chinese.
+> **English:** AutoReel (自影) is an open-source, fully automated short-video pipeline for Chinese creators: **find a topic → write the script → voice it → render a vertical video → publish**. Any coding agent (Claude Code, Codex, Gemini CLI, Cursor, OpenCode …) does the research and writing via AGENTS.md, on its own scheduler or on GitHub Actions / local cron; voice it with Volcengine Doubao TTS (the same voices used across Douyin/CapCut) or offline CosyVoice, storyboard every segment (royalty-free stock footage from Pexels/Pixabay, animated charts, offline maps, timelines, quote cards or your own assets), render with [HyperFrames](https://github.com/heygen-com/hyperframes), then push to a private GitHub repo. A Chrome extension downloads each clip and publishes it to Douyin (WeChat Channels / Kuaishou optional), with QR-code login, session keep-alive, verification prompts and templated webhooks (WeCom, Feishu, DingTalk, OneBot 11/12, Bark, Telegram …). Channels are plain folders, so you can add your own. Docs are in Chinese.
 
 一条从**找方向 → 写文案 → 配音 → 生成视频 → 发作品**全自动跑完的短视频流水线。每个「频道」就是一个文件夹，定义好主题和规则，每天自动出片、自动发布。
 
@@ -18,13 +18,13 @@
 | 好物推荐 `haowu` | 一件产品的看点 | **只用你提供的资料** `inputs/haowu/` |
 | 每天一个成语 `chengyu` | 一个成语的出处、故事、用法 | 成语词典、典籍原文 |
 
-想做别的主题？在 Claude Code 里对仓库说一句「**新建一个频道，讲 XX**」，`autoreel-channel` 技能会一步步引导你：调研同类账号和可信来源、定结构和语气、并排比较几套配色、自动校验、试做一期，最后启用并建好定时任务。也可以手动复制一个频道文件夹修改，详见 [docs/新建频道.md](docs/新建频道.md)。
+想做别的主题？在你的 AI 工具里对仓库说一句「**新建一个频道，讲 XX**」，`autoreel-channel` 技能会一步步引导你：调研同类账号和可信来源、定结构和语气、并排比较几套配色、自动校验、试做一期，最后启用并建好定时任务。也可以手动复制一个频道文件夹修改，详见 [docs/新建频道.md](docs/新建频道.md)。
 
 ## 工作原理
 
 ```
-Claude Code 云端定时任务（每个频道每天一次）
-  └─ autoreel 技能
+任意 AI 工具的定时任务（每个频道每天一次；Claude Code、Codex、Gemini CLI……或 GitHub Actions / 本机 cron）
+  └─ AGENTS.md → autoreel 技能（AI 负责找方向、写稿）
        ① 找方向：按频道 brief 搜索 / 读你的素材，事实需有来源
        ② 写文案 + 分镜：每段配一个画面（实拍 / 图表 / 地图 / 时间线 / 金句 / 你的素材）
        ③ 配音：火山引擎豆包语音或 CosyVoice3，每段按内容换语气，逐句检查清晰度
@@ -35,7 +35,8 @@ Claude Code 云端定时任务（每个频道每天一次）
               └─ 结果写回仓库，浏览器通知 / Webhook 告诉你
 ```
 
-- **不需要服务器**：生成在 Claude Code 云端，发布在你自己的 Chrome 里，中间用私有 GitHub 仓库当"信箱"。
+- **不绑定某一家 AI**：AI 只负责找选题和写稿，配音、画面、渲染、推送都是一条命令 `tools/make.py`。用哪家 AI 工具、用它自带的定时任务还是 GitHub Actions，安装向导帮你选。
+- **不需要服务器**：生成在 AI 工具的云端（或 GitHub Actions、你自己的电脑），发布在你自己的 Chrome 里，中间用私有 GitHub 仓库当"信箱"。
 - **用你自己的浏览器发布**：登录状态是你自己的，插件只操作它自己打开的窗口。
 - **需要你时会叫你**：短信 / 滑块验证、登录失效、发布失败，都会通知你（可推到手机、QQ 群、企业微信群）。
 
@@ -74,7 +75,7 @@ Claude Code 云端定时任务（每个频道每天一次）
 2. 改 `autoreel.config.json`：启用哪些频道、配音方案。
 3. （可选）申请免费的 Pexels / Pixabay 密钥，填进云端环境变量，开启实拍素材。
 4. 生成只对这个仓库有 **Contents 读写** 权限的 GitHub 令牌。
-5. 在 [Claude Code 网页版](https://claude.ai/code) 用这个仓库为每个频道创建定时任务（指令见 [prompts/定时任务.md](prompts/定时任务.md)）。
+5. 在你的 AI 工具里打开仓库，说「帮我设置自影的定时任务」，安装向导会按你的工具建好（也可以手动创建，指令见 [prompts/定时任务.md](prompts/定时任务.md)）。
 6. Chrome 加载 `extension/`，填仓库和令牌，扫码登录抖音。
 
 ## 更新
@@ -96,8 +97,11 @@ Claude Code 云端定时任务（每个频道每天一次）
 | `channels/<频道>/` | 频道定义：`channel.json`（设置）+ `brief.md`（找方向、写文案的规则） |
 | `inputs/` | 需要你提供素材的频道（书单、产品资料） |
 | `.claude/skills/autoreel/` | 出片技能（各频道通用）：找方向 → 写文案 → 自查 → 配音 → 生成视频 → 推送 |
+| `AGENTS.md` | 给所有 AI 工具的入口说明 |
 | `.claude/skills/autoreel-channel/` | 频道管理技能：交互式新建、编辑、停用频道 |
-| `tools/` | `gen_hf.py` 生成视频工程和文案、`scenes.py` 分镜画面、`footage.py` 实拍素材、`mapsvg.mjs` 地图、`tts.py` 配音、`voice_qc.py` 配音清晰度检查、`voices/` 内置音色、`make_cover.py` 封面、`check_channel.py` 频道检查与预览、`palettes.json` 配色预设、`push_clip.sh` 推送、`sync_upstream.py` 同步上游更新、`setup.sh` 安装 |
+| `.claude/skills/autoreel-setup/` | 安装与定时任务向导：按你的 AI 工具建好定时任务 |
+| `schedulers/` | 没有定时任务功能的 AI 工具用：GitHub Actions、本机 cron / launchd 模板 |
+| `tools/` | `make.py` 一条命令出片、`notify.py` webhook 通知、`gen_hf.py` 生成视频工程和文案、`scenes.py` 分镜画面、`footage.py` 实拍素材、`mapsvg.mjs` 地图、`tts.py` 配音、`voice_qc.py` 配音清晰度检查、`voices/` 内置音色、`make_cover.py` 封面、`check_channel.py` 频道检查与预览、`palettes.json` 配色预设、`push_clip.sh` 推送、`sync_upstream.py` 同步上游更新、`setup.sh` 安装 |
 | `extension/` | Chrome 插件（Manifest V3） |
 | `prompts/` | 定时任务指令模板 |
 

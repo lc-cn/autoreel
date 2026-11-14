@@ -21,8 +21,8 @@ import subprocess
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-FRAMEWORK = ["tools/", "extension/", ".claude/skills/autoreel/", ".claude/skills/autoreel-channel/", "docs/", "prompts/",
-             "assets/", "README.md", "THIRD_PARTY_NOTICES.md", "LICENSE", ".gitignore"]
+FRAMEWORK = ["tools/", "extension/", ".claude/skills/autoreel/", ".claude/skills/autoreel-channel/", ".claude/skills/autoreel-setup/",
+             "docs/", "prompts/", "schedulers/", "assets/", "AGENTS.md", "README.md", "THIRD_PARTY_NOTICES.md", "LICENSE", ".gitignore"]
 KEEP_EXTRA = ["tools/voices/"]  # 本地多出来的文件不删（你自己加的音色）
 STAMP = ".autoreel-upstream"
 

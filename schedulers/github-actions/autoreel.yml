@@ -1,0 +1,98 @@
+# 自影 · GitHub Actions 定时出片模板
+# 用法：复制到你仓库的 .github/workflows/autoreel.yml，按下面的「要改的地方」改好，提交即可。
+# 详见 schedulers/github-actions/README.md。也可以让 AI 运行安装向导（autoreel-setup 技能）帮你改。
+name: 自影定时出片
+
+on:
+  schedule:
+    # 【要改的地方 1】每个频道一行，时间是 UTC（北京时间减 8 小时），和下面 CHANNEL_OF 里的一一对应。
+    # GitHub 高峰期可能延迟 10–30 分钟，制作时间至少比发布时间早 1 小时。
+    - cron: '0 0 * * *'     # 北京 08:00 制作 → 09:00 发布 热点快报
+    - cron: '30 3 * * *'    # 北京 11:30 制作 → 12:30 发布 一条讲透
+    - cron: '0 10 * * *'    # 北京 18:00 制作 → 19:00 发布 历史上的今天
+  workflow_dispatch:
+    inputs:
+      channel:
+        description: 频道 id（手动补做一期）
+        required: true
+
+permissions:
+  contents: write   # 推送 clip-日期-频道 分支
+
+concurrency:
+  group: autoreel
+  cancel-in-progress: false   # 一次只做一期，后来的排队
+
+env:
+  # 【要改的地方 2】cron 和频道的对应关系（cron 字符串要和上面完全一致）
+  CHANNEL_OF: |
+    0 0 * * *=kuaibao
+    30 3 * * *=jiangtou
+    0 10 * * *=lishi
+  # 【要改的地方 3】你用的 AI 工具：安装命令和运行命令（$PROMPT 会被替换成任务指令）。
+  # 以下写法以各工具官方文档为准，选一组取消注释；API 密钥放在仓库 Settings → Secrets and variables → Actions。
+  AGENT_INSTALL: npm install -g @anthropic-ai/claude-code
+  AGENT_CMD: claude -p "$PROMPT" --dangerously-skip-permissions
+  #   Codex：     AGENT_INSTALL: npm install -g @openai/codex
+  #               AGENT_CMD: codex exec --dangerously-bypass-approvals-and-sandbox "$PROMPT"
+  #   Gemini CLI：AGENT_INSTALL: npm install -g @google/gemini-cli
+  #               AGENT_CMD: gemini --yolo -p "$PROMPT"
+  #   OpenCode：  AGENT_INSTALL: npm install -g opencode-ai
+  #               AGENT_CMD: opencode run "$PROMPT"
+  HYPERFRAMES_NO_TELEMETRY: '1'
+  DO_NOT_TRACK: '1'
+
+jobs:
+  make:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 确定频道
+        id: pick
+        run: |
+          CH="${{ github.event.inputs.channel }}"
+          if [ -z "$CH" ]; then
+            CH=$(printf '%s\n' "$CHANNEL_OF" | awk -F= -v s="${{ github.event.schedule }}" '$1==s{print $2}')
+          fi
+          [[ "$CH" =~ ^[a-z0-9_]+$ ]] || { echo "找不到这个时间对应的频道，检查 CHANNEL_OF"; exit 1; }
+          echo "channel=$CH" >> "$GITHUB_OUTPUT"
+          echo "频道：$CH"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: 缓存模型和依赖
+        uses: actions/cache@v4
+        with:
+          path: |
+            tools/cosyvoice
+            tools/models
+            tools/node_modules
+          key: autoreel-${{ runner.os }}-${{ hashFiles('tools/setup.sh', 'autoreel.config.json') }}
+
+      - name: 安装自影
+        run: |
+          sudo apt-get update -q && sudo apt-get install -y -q ffmpeg fonts-wqy-zenhei
+          bash tools/setup.sh
+
+      - name: 安装 AI 工具
+        run: ${{ env.AGENT_INSTALL }}
+
+      - name: 出片并推送
+        env:
+          # 【要改的地方 4】把你的 AI 工具需要的密钥从 Secrets 传进来（只留用得到的）
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
+          PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}
+          CH: ${{ steps.pick.outputs.channel }}
+        run: |
+          git config user.name "autoreel-bot"
+          git config user.email "autoreel-bot@users.noreply.github.com"
+          PROMPT="按仓库 AGENTS.md 的说明，制作 ${CH} 频道（今天，日期按北京时间；channel.json 的 days_ahead 为 1 时连明天一起做），用 tools/make.py 加 --push --notify 推送到 clip-日期-${CH} 分支，已存在的跳过。这是仓库主人安排的每日任务，已授权推送这些分支；brief 要求标记「已做」时，只提交那一个文件到默认分支。不要登录或调用任何视频平台。最后用一段话总结选题、来源和推送结果。"
+          export PROMPT
+          eval "$AGENT_CMD"

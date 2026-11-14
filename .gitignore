@@ -5,3 +5,5 @@ tools/package*.json
 **/__pycache__/
 *.mp4
 .DS_Store
+schedulers/local/agent.env
+schedulers/local/logs/

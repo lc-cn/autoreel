@@ -67,6 +67,8 @@ class Checker:
             x = np.interp(np.arange(0, len(audio), sr / 16000), np.arange(len(audio)), audio).astype(np.float32)
         else:
             x = audio.astype(np.float32)
+        if len(x) < 16000 * 0.3:  # 太短（几乎是空白）识别模型会报错，直接当作没听到
+            return ""
         s = self.rec.create_stream()
         s.accept_waveform(16000, x)
         self.rec.decode_stream(s)

@@ -30,7 +30,7 @@
   ],
   "collection": "每天一个成语",
   "schedule": {
-    "make": "07:13",
+    "make": "07:00",
     "publish": "08:00",
     "days_ahead": 1
   },
