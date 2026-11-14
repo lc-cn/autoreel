@@ -175,8 +175,10 @@ function fieldHTML(f, c) {
       const acc = E.cfg.accounts || [];
       if (!acc.length) { input = '<div class="muted">还没有登记账号，现在发往这个浏览器登录的号。要分账号发布，<a href="#platforms">去「发布平台」添加账号</a>。</div>'; break; }
       const all = !Array.isArray(val);
-      const PN = { douyin: "抖音", channels: "视频号", kuaishou: "快手" };
-      input = `<div class="accs" id="${id}">${acc.map((a) => `<label class="check"><input type="checkbox" value="${esc(a.id)}" ${all || val.includes(a.id) ? "checked" : ""} /> ${esc(PN[a.platform] || a.platform)} · ${esc(a.name)}</label>`).join("")}</div><span class="help">${all ? "现在是默认：发往全部账号。" : ""}账号在<a href="#platforms">「发布平台」</a>里新建和管理。</span>`;
+      const PN = { douyin: ["抖音", "抖"], channels: ["视频号", "视"], kuaishou: ["快手", "快"] };
+      const groups = Object.keys(PN).map((pf) => [pf, acc.filter((a) => a.platform === pf)]).filter(([, l]) => l.length);
+      input = `<div class="accg" id="${id}">${groups.map(([pf, l]) => `<div class="accr"><span class="badge ${pf}">${PN[pf][1]}</span><b>${PN[pf][0]}</b>
+          <div class="accs">${l.map((a) => `<label class="check"><input type="checkbox" value="${esc(a.id)}" ${all || val.includes(a.id) ? "checked" : ""} /> ${esc(a.name)}</label>`).join("")}</div></div>`).join("")}</div><span class="help">${all ? "现在是默认：发往全部账号。" : ""}账号在<a href="#platforms">「发布平台」</a>里新建和管理。</span>`;
       break;
     }
     case "hook": {

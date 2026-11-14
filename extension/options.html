@@ -74,7 +74,12 @@
   .chmain h3:first-child { border-top: none; padding-top: 0; margin-top: 0; }
   .rng { display: flex; align-items: center; gap: 8px; }
   .chmain .field.wide { grid-column: 1 / -1; }
-  .accs { display: flex; flex-wrap: wrap; gap: 8px 18px; padding: 6px 0; }
+  .accs { display: flex; flex-wrap: wrap; gap: 8px 18px; padding: 6px 0; flex: 1; }
+  .accg { border: 1px solid var(--line); border-radius: 10px; padding: 2px 12px; }
+  .accr { display: flex; align-items: center; gap: 10px; padding: 6px 0; }
+  .accr + .accr { border-top: 1px solid var(--line); }
+  .accr .badge { width: 24px; height: 24px; font-size: 12px; border-radius: 7px; }
+  .accr > b { width: 52px; flex: none; font-size: 12.5px; }
   .acr { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-top: 1px solid var(--line); }
   .acr:first-child { border-top: none; }
   .acr input[type=text] { width: 160px; }
