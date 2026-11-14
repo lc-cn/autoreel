@@ -77,6 +77,10 @@ Claude Code 云端定时任务（每个频道每天一次）
 5. 在 [Claude Code 网页版](https://claude.ai/code) 用这个仓库为每个频道创建定时任务（指令见 [prompts/定时任务.md](prompts/定时任务.md)）。
 6. Chrome 加载 `extension/`，填仓库和令牌，扫码登录抖音。
 
+## 更新
+
+上游有更新时，在你的仓库里运行 `python3 tools/sync_upstream.py` 预览、加 `--apply` 同步：框架代码会更新，你的频道、配置和素材不会被覆盖。详见 [docs/同步更新.md](docs/同步更新.md)。
+
 ## 使用前请务必了解
 
 - **内容责任在你**。流水线要求每条事实都有可信来源，但 AI 仍可能出错。建议前几周每天看一眼成片和来源（云端会把视频和来源链接发给你）。
@@ -93,7 +97,7 @@ Claude Code 云端定时任务（每个频道每天一次）
 | `inputs/` | 需要你提供素材的频道（书单、产品资料） |
 | `.claude/skills/autoreel/` | 出片技能（各频道通用）：找方向 → 写文案 → 自查 → 配音 → 生成视频 → 推送 |
 | `.claude/skills/autoreel-channel/` | 频道管理技能：交互式新建、编辑、停用频道 |
-| `tools/` | `gen_hf.py` 生成视频工程和文案、`scenes.py` 分镜画面、`footage.py` 实拍素材、`mapsvg.mjs` 地图、`tts.py` 配音、`voice_qc.py` 配音清晰度检查、`voices/` 内置音色、`make_cover.py` 封面、`check_channel.py` 频道检查与预览、`palettes.json` 配色预设、`push_clip.sh` 推送、`setup.sh` 安装 |
+| `tools/` | `gen_hf.py` 生成视频工程和文案、`scenes.py` 分镜画面、`footage.py` 实拍素材、`mapsvg.mjs` 地图、`tts.py` 配音、`voice_qc.py` 配音清晰度检查、`voices/` 内置音色、`make_cover.py` 封面、`check_channel.py` 频道检查与预览、`palettes.json` 配色预设、`push_clip.sh` 推送、`sync_upstream.py` 同步上游更新、`setup.sh` 安装 |
 | `extension/` | Chrome 插件（Manifest V3） |
 | `prompts/` | 定时任务指令模板 |
 
