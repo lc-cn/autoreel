@@ -115,14 +115,14 @@ async function readStatus(tag) {
     return { sha: null, doc: null };
   }
 }
-async function writeStatus(tag, platform, status, detail = "", attempts = 0) {
-  // status.json：顶层 status 保持与旧版一致（以抖音为准），platforms 记录每个平台
-  for (let i = 0; i < 2; i++) {
+async function writeStatus(tag, platform, status, detail = "", attempts = 0, key = platform, info = {}) {
+  // status.json：顶层 status 保持与旧版一致（以抖音为准），platforms 按账号记录（key 是账号 id；没配账号时是平台名）
+  for (let i = 0; i < 3; i++) {
     const { sha, doc } = await readStatus(tag);
     const d = doc || {};
     d.platforms = d.platforms || {};
-    if (d.status === "published" && !d.platforms.douyin) d.platforms.douyin = { status: "published", time: d.time };
-    d.platforms[platform] = { status, detail: String(detail).slice(-400), attempts, time: beijing().stamp };
+    if (d.status === "published" && !Object.keys(d.platforms).length) d.platforms.douyin = { status: "published", time: d.time };
+    d.platforms[key] = { platform, status, detail: String(detail).slice(-400), attempts, time: beijing().stamp, ...info };
     if (platform === "douyin" || !d.status) Object.assign(d, { status, detail: String(detail).slice(-400), attempts, time: beijing().stamp });
     const content = btoa(String.fromCharCode(...new TextEncoder().encode(JSON.stringify(d, null, 1))));
     try {
@@ -520,6 +520,34 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
         }
         return reply({ ok: true });
       }
+      case "identify": {
+        // 识别当前登录的账号；rebind = 有意换号，覆盖本机记录
+        const p = msg.platform, P = PLATFORMS[p];
+        const release = await acquire(`识别${P.name}账号`);
+        if (!release) return reply({ error: "正在发布中，稍后再试" });
+        let tab;
+        try {
+          tab = await openPlatformTab(p, P.upload);
+          const r = await waitTab(tab.id, "ready", 90000);
+          if (r.timeout) return reply({ error: "页面没有加载出来，稍后再试" });
+          if (r.needLogin) { await setLogin(p, false); return reply({ error: `${P.name}还没登录，先扫码登录` }); }
+          await new Promise((x) => setTimeout(x, 2000));
+          const ident = await detectIdentity(p, tab.id);
+          if (msg.rebind && ident.id) {
+            const A = await accountFor(p);
+            if (A) await saveIdent(A.id, ident);
+            await log(`已重新记录${P.name}账号：${ident.nickname || ident.id}`);
+            return reply({ ident, ok: true, rebound: true });
+          }
+          const chk = await checkIdentity(p, ident);
+          return reply({ ident, ok: chk.ok, expect: chk.expect || null, account: chk.A || null });
+        } catch (e) {
+          return reply({ error: String(e.message || e) });
+        } finally {
+          if (tab) await closeTab(tab.id);
+          await release();
+        }
+      }
       case "resetToday": {
         const st = await getState();
         const d = st[beijing().date] || {};
@@ -559,6 +587,15 @@ async function publishOne(platform, slot, tag, pkg) {
     await closeTab(tab.id);
     return { ok: false, code: "need_login", msg: `${P.name}登录已失效` };
   }
+  // 发布前核对账号：账号 ID 对不上就不发（昵称只用来显示）
+  const ident = await detectIdentity(platform, tab.id);
+  const chk = await checkIdentity(platform, ident);
+  if (chk.ok === false) {
+    await closeTab(tab.id);
+    await setCurrentJob(null);
+    return { ok: false, code: "wrong_account", ident, msg: `当前登录的是「${ident.nickname || "另一个账号"}」，不是「${chk.A.name}」${chk.expect.nickname ? `（${chk.expect.nickname}）` : ""}，为避免发错号没有发布` };
+  }
+  if (!ident.id) await log(`没能读取到${P.name}的账号 ID，这次无法核对账号${ident.err ? `（${ident.err}）` : ""}；可在设置页「发布平台」点「识别账号」排查`);
   // 视频号：点「发表」后表单所在的 iframe 会被销毁，改为监听页面跳转判断成功
   const submitted = platform === "channels" ? waitTab(tab.id, "submitted", JOB_TIMEOUT_MS) : null;
   const resultP = waitTab(tab.id, "result", JOB_TIMEOUT_MS);
@@ -569,6 +606,7 @@ async function publishOne(platform, slot, tag, pkg) {
     res = await resultP;
   }
   if (res.timeout) res = { ok: false, code: "error", msg: "发布超过 40 分钟仍未完成" };
+  res.ident = ident;
   await closeTab(tab.id);
   await setCurrentJob(null);
   return res;
@@ -607,10 +645,15 @@ const HELP = {
   gave_up: "已重试 3 次。打开插件弹窗点「立即运行」并盯着自动打开的窗口；仍失败请把插件「运行日志」发给 Claude。",
   declare: "AI 声明没有勾上，为避免违规这次没有发布。打开插件弹窗点「立即运行」重试；仍失败请把运行日志发给 Claude。",
   error: "打开插件弹窗点「立即运行」重试；仍失败请把运行日志发给 Claude。",
+  wrong_account: "这个 Chrome 里登录的账号和设置的不一致，为避免发错号没有发布。在这个 Chrome 里退出当前账号、扫码登录正确的账号；如果你是有意换号，到设置页「发布平台」点「重新识别」。",
 };
 async function recordResult(platform, slot, tag, meta, res) {
   setTimeout(updateBadge, 500);
   const P = PLATFORMS[platform];
+  const A = await accountFor(platform);
+  const key = A ? A.id : platform;
+  const who = A && A.id !== platform ? `${P.name}·${A.name}` : P.name;
+  const info = { account: A ? A.name : "", nickname: (res.ident && res.ident.nickname) || "" };
   const state = await getState();
   const today = beijing().date;
   const st = (((state[today] = state[today] || {})[slot.key] = state[today][slot.key] || {})[platform] =
@@ -619,24 +662,123 @@ async function recordResult(platform, slot, tag, meta, res) {
     st.published = true;
     st.last = beijing().stamp;
     await saveState(state);
-    await log(`✅ ${P.name}「${slot.name}」发布成功：${meta.title}`);
-    await writeStatus(tag, platform, "published", "", st.attempts);
-    await notify("published", `${P.name}已发布「${slot.name}」`, meta.title, null, { platform, slot: slot.name, videoTitle: meta.title });
+    await log(`✅ ${who}「${slot.name}」发布成功：${meta.title}`);
+    await writeStatus(tag, platform, "published", "", st.attempts, key, info);
+    await notify("published", `${who}已发布「${slot.name}」`, meta.title, null, { platform, slot: slot.name, videoTitle: meta.title });
     return;
   }
   let code = res.code || "failed";
-  if (code === "need_login") st.attempts = Math.max(0, st.attempts - 1); // 登录失效不算失败次数
+  if (code === "need_login" || code === "wrong_account") st.attempts = Math.max(0, st.attempts - 1); // 登录失效、登错账号不算失败次数
   if (code === "failed" && st.attempts >= MAX_ATTEMPTS) code = "gave_up";
   st.lastError = res.msg;
   await saveState(state);
-  await log(`❌ ${P.name}「${slot.name}」${res.msg}`);
-  await writeStatus(tag, platform, code, res.msg, st.attempts);
+  await log(`❌ ${who}「${slot.name}」${res.msg}`);
+  await writeStatus(tag, platform, code, res.msg, st.attempts, key, info);
   if (st.alerted !== code) {
     st.alerted = code;
     await saveState(state);
-    const kind = code === "need_login" ? "login" : "failed";
-    await notify(kind, `${P.name}「${slot.name}」${code === "need_login" ? "需要重新登录" : "发布受阻"}`, `${res.msg}\n${HELP[code] || HELP.error}`, code === "need_login" ? { login: platform } : null, { platform, slot: slot.name, videoTitle: meta.title });
+    const kind = code === "need_login" || code === "wrong_account" ? "login" : "failed";
+    await notify(kind, `${who}「${slot.name}」${code === "need_login" ? "需要重新登录" : code === "wrong_account" ? "登录的不是这个账号" : "发布受阻"}`, `${res.msg}\n${HELP[code] || HELP.error}`, code === "need_login" ? { login: platform } : null, { platform, slot: slot.name, videoTitle: meta.title });
   }
+}
+
+// ───────── 账号：一个 Chrome 资料里每个平台登录一个账号；仓库 autoreel.config.json 的 accounts 登记所有账号 ─────────
+// 本机设置 settings.acct = {平台: 账号 id}，settings.ident = {账号 id: {id, nickname, time}}（id 是平台账号 ID 或登录指纹，用来核对）
+async function getAccounts() {
+  const { channels } = await chrome.storage.local.get("channels");
+  return (channels && channels.accounts) || [];
+}
+// 这个浏览器在某平台上代表哪个账号：设置里选了就用；仓库里这个平台只有一个账号就自动用它；仓库没登记账号时沿用旧版（账号 = 平台）
+async function accountFor(platform, s) {
+  s = s || (await getSettings());
+  const accounts = await getAccounts();
+  if (!accounts.length) return { id: platform, name: PLATFORMS[platform].name, platform, legacy: true };
+  const chosen = (s.acct || {})[platform];
+  if (chosen === "") return null; // 明确选了「这个浏览器不发」
+  if (chosen) return accounts.find((a) => a.id === chosen && a.platform === platform) || null;
+  const mine = accounts.filter((a) => a.platform === platform);
+  return mine.length === 1 ? mine[0] : null;
+}
+const targets = (slot, A) => !!A && (!slot.to || slot.to.includes(A.id) || (A.legacy && slot.to.some((x) => x === A.platform)));
+
+// 识别当前登录的账号：昵称只用来显示，核对靠平台账号 ID（读不到时用登录 cookie 的指纹，只保存哈希）
+const ID_COOKIES = { douyin: [["https://creator.douyin.com/", "uid_tt"], ["https://www.douyin.com/", "uid_tt"]], kuaishou: [["https://cp.kuaishou.com/", "userId"]], channels: [] };
+async function sha16(t) {
+  const b = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(t));
+  return [...new Uint8Array(b)].map((x) => x.toString(16).padStart(2, "0")).join("").slice(0, 16);
+}
+function pageIdentity(platform) {
+  // 在平台页面里执行（页面自己的登录状态）
+  return (async () => {
+    const res = { uid: "", nickname: "", via: "" };
+    const pick = (o, ks) => { for (const k of ks) if (o && o[k] != null && String(o[k]).trim() && String(o[k]) !== "0") return String(o[k]).trim(); return ""; };
+    const getJSON = async (u) => { try { const r = await fetch(u, { credentials: "include" }); return r.ok ? await r.json() : null; } catch { return null; } };
+    if (platform === "douyin") {
+      for (const u of ["/web/api/media/user/info/", "/aweme/v1/creator/user/info/"]) {
+        const j = await getJSON(u);
+        const user = j && (j.user || j.user_info || (j.data && (j.data.user || j.data.user_info || j.data)));
+        if (user && typeof user === "object") {
+          res.uid = pick(user, ["uid", "user_id", "sec_uid", "unique_id", "short_id"]);
+          res.nickname = pick(user, ["nickname", "nick_name", "name"]);
+          if (res.uid || res.nickname) { res.via = u; break; }
+        }
+      }
+    }
+    if (platform === "channels") {
+      const m = (document.body && document.body.innerText || "").match(/sph[A-Za-z0-9_]{6,}/);
+      if (m) { res.uid = m[0]; res.via = "page"; }
+    }
+    if (!res.nickname) {
+      const sel = '[class*="nickname"],[class*="nick-name"],[class*="nickName"],[class*="userName"],[class*="user-name"],[class*="username"],[class*="account-name"],[class*="name"]';
+      for (const el of document.querySelectorAll(sel)) {
+        const r = el.getBoundingClientRect(), t = (el.innerText || "").trim();
+        if (r.width && r.height && r.top < 220 && t && t.length <= 24 && !/\n/.test(t) && !/上传|发布|首页|创作|登录|通知|帮助|数据|管理|设置/.test(t)) { res.nickname = t; break; }
+      }
+    }
+    return res;
+  })();
+}
+async function detectIdentity(platform, tabId) {
+  const out = { id: "", nickname: "", via: "" };
+  try {
+    const [r] = await chrome.scripting.executeScript({ target: { tabId }, world: "MAIN", func: pageIdentity, args: [platform] });
+    const v = (r && r.result) || {};
+    out.nickname = v.nickname || "";
+    if (v.uid) Object.assign(out, { id: `${platform}:${v.uid}`, via: v.via || "page", uid: v.uid });
+  } catch (e) {
+    out.err = String(e.message || e);
+  }
+  if (!out.id) {
+    for (const [url, name] of ID_COOKIES[platform] || []) {
+      const c = await chrome.cookies.get({ url, name }).catch(() => null);
+      if (c && c.value) { out.id = `${platform}:fp-${await sha16(name + "=" + c.value)}`; out.via = "cookie"; break; }
+    }
+  }
+  return out;
+}
+// 核对：返回 {ok:true|false|null, expect}；null = 无法核对（没有记录或读不到 ID）
+async function checkIdentity(platform, got, { bindIfNew = true } = {}) {
+  const s = await getSettings();
+  const A = await accountFor(platform, s);
+  if (!A) return { ok: null };
+  const ident = s.ident || {};
+  const expect = ident[A.id] || (A.pid ? { id: A.pid, nickname: A.nickname || "" } : null);
+  if (!got.id) return { ok: null, expect, A };
+  if (expect && expect.id) {
+    const ok = expect.id === got.id;
+    if (ok && got.nickname && got.nickname !== expect.nickname) await saveIdent(A.id, got); // 改了昵称也是同一个号，更新显示
+    return { ok, expect, A };
+  }
+  if (bindIfNew) {
+    await saveIdent(A.id, got);
+    await log(`已记录${PLATFORMS[platform].name}账号「${A.name}」：${got.nickname || "（没读到昵称）"}，以后发布前会核对是不是这个号`);
+  }
+  return { ok: null, expect: null, A, bound: true };
+}
+async function saveIdent(acctId, got) {
+  const { settings = {} } = await chrome.storage.local.get("settings");
+  settings.ident = { ...(settings.ident || {}), [acctId]: { id: got.id, nickname: got.nickname || "", via: got.via || "", time: beijing().stamp } };
+  await chrome.storage.local.set({ settings });
 }
 
 // ───────── 频道列表（从仓库读取，缓存 30 分钟）─────────
@@ -650,12 +792,13 @@ async function getChannels(force = false) {
     for (const id of cfg.channels || []) {
       try {
         const ch = await raw(`channels/${id}/channel.json`);
-        list.push({ key: id, name: ch.name || id, notBefore: (ch.schedule && ch.schedule.publish) || "00:00" });
+        list.push({ key: id, name: ch.name || id, notBefore: (ch.schedule && ch.schedule.publish) || "00:00", to: Array.isArray(ch.publish_to) ? ch.publish_to : null });
       } catch (e) {
         await log(`读取频道 ${id} 失败：${e.message}`);
       }
     }
-    await chrome.storage.local.set({ channels: { at: Date.now(), list } });
+    const accounts = (Array.isArray(cfg.accounts) ? cfg.accounts : []).filter((a) => a && a.id && PLATFORMS[a.platform]);
+    await chrome.storage.local.set({ channels: { at: Date.now(), list, accounts } });
     return list;
   } catch (e) {
     if (channels) return channels.list; // 网络不好时先用上次的
@@ -679,9 +822,11 @@ async function updateBadge() {
   const { date, hm } = beijing();
   const day = (await getState())[date] || {};
   const SLOTS = await getChannels();
+  const acc = {};
+  for (const p of ORDER) acc[p] = s.platforms[p] ? await accountFor(p, s) : null;
   const bad = SLOTS.some((sl) => hm >= (s.times[sl.key] || sl.notBefore) && ORDER.some((p) => {
-    const r = s.platforms[p] && (day[sl.key] || {})[p];
-    return r && !r.published && (r.attempts >= MAX_ATTEMPTS || r.alerted === "need_login" || r.alerted === "declare");
+    const r = s.platforms[p] && targets(sl, acc[p]) && (day[sl.key] || {})[p];
+    return r && !r.published && (r.attempts >= MAX_ATTEMPTS || r.alerted === "need_login" || r.alerted === "declare" || r.alerted === "wrong_account");
   }));
   chrome.action.setBadgeBackgroundColor({ color: "#e5484d" });
   chrome.action.setBadgeText({ text: bad ? "!" : "" });
@@ -706,6 +851,19 @@ async function acquire(owner) {
   };
 }
 
+// 仓库 status.json 里这个账号是否已发布过。旧版（还没有账号时）按平台名记录的「已发布」，
+// 算在这个平台的第一个账号（原来那个号）头上，升级后不会重复发
+async function alreadyPublished(doc, A, p) {
+  if (!doc || !A) return false;
+  const pl = doc.platforms || {};
+  if (pl[A.id] && pl[A.id].status === "published") return true;
+  const first = (await getAccounts()).find((a) => a.platform === p);
+  const isOrig = A.legacy || (first && first.id === A.id);
+  if (!isOrig) return false;
+  if (pl[p] && pl[p].status === "published" && !pl[p].platform) return true;
+  return p === "douyin" && doc.status === "published" && !Object.keys(pl).some((k) => k !== "douyin");
+}
+
 // ───────── 调度 ─────────
 async function tick({ manual = false } = {}) {
   const s = await getSettings();
@@ -727,8 +885,10 @@ async function tick({ manual = false } = {}) {
       if (hm < (s.times[slot.key] || slot.notBefore)) continue;
       const tag = channelTag(today, slot.key);
       tags.push(tag);
+      const acc = {};
+      for (const p of ORDER) acc[p] = s.platforms[p] ? await accountFor(p, s) : null;
       const todo = ORDER.filter((p) => {
-        if (!s.platforms[p]) return false;
+        if (!s.platforms[p] || !targets(slot, acc[p])) return false;
         const st = state[today]?.[slot.key]?.[p];
         return !(st && st.published) && !(st && st.attempts >= MAX_ATTEMPTS && !manual);
       });
@@ -747,7 +907,7 @@ async function tick({ manual = false } = {}) {
       titles[tag] = pkg.meta.title;
       await chrome.storage.local.set({ titles: Object.fromEntries(Object.entries(titles).slice(-12)) });
       for (const p of todo) {
-        const done = doc && ((doc.platforms && doc.platforms[p] && doc.platforms[p].status === "published") || (p === "douyin" && doc.status === "published"));
+        const done = await alreadyPublished(doc, acc[p], p);
         const st0 = await getState();
         const rec = (((st0[today] = st0[today] || {})[slot.key] = st0[today][slot.key] || {})[p] = st0[today][slot.key][p] || { published: false, attempts: 0 });
         if (done) {
@@ -758,7 +918,7 @@ async function tick({ manual = false } = {}) {
         if (rec.attempts >= MAX_ATTEMPTS && manual) rec.attempts = 0;
         rec.attempts += 1;
         await saveState(st0);
-        await log(`开始发布 ${PLATFORMS[p].name}「${slot.name}」（第 ${rec.attempts} 次）：${pkg.meta.title}`);
+        await log(`开始发布 ${PLATFORMS[p].name}${acc[p].legacy ? "" : "·" + acc[p].name}「${slot.name}」（第 ${rec.attempts} 次）：${pkg.meta.title}`);
         await setRunning({ slot: slot.name, platform: PLATFORMS[p].name, stage: "打开上传页" });
         let res;
         try {
@@ -792,8 +952,14 @@ async function startLogin(platform) {
     if (P.loggedIn(info.url)) {
       chrome.tabs.onUpdated.removeListener(listener);
       await setLogin(platform, true);
-      await log(`${P.name}登录成功`);
-      chrome.notifications.create({ type: "basic", iconUrl: "icons/128.png", title: `${P.name}登录成功`, message: "登录状态已保存，插件会自动保持登录。" });
+      await new Promise((r) => setTimeout(r, 2500)); // 等页面把用户信息加载出来
+      const ident = await detectIdentity(platform, tabId);
+      const chk = await checkIdentity(platform, ident);
+      const nm = ident.nickname ? `「${ident.nickname}」` : "";
+      await log(`${P.name}登录成功${nm}${ident.id ? "" : "（没读到账号 ID，发布前将无法核对账号）"}`);
+      if (chk.ok === false) {
+        await notify("login", `${P.name}登录的不是「${chk.A.name}」`, `刚登录的是${nm || "另一个账号"}，和这个浏览器设置的账号${chk.expect.nickname ? `（${chk.expect.nickname}）` : ""}不一致，插件不会用它发布。请退出后扫码登录正确的账号；有意换号就到设置页「发布平台」点「重新识别」。`, { login: platform }, { platform });
+      } else chrome.notifications.create({ type: "basic", iconUrl: "icons/128.png", title: `${P.name}登录成功${nm}`, message: "登录状态已保存，插件会自动保持登录。" });
       setTimeout(() => chrome.windows.remove(w.id).catch(() => {}), 2500);
       tick(); // 登录后立即补发
     }
@@ -856,4 +1022,4 @@ chrome.alarms.onAlarm.addListener((a) => {
 });
 
 // 供自动化测试调用（不影响正常使用）
-self.__kb = { tick, publishOne, keepAlive, fetchPackage, recordResult, beijing, idbPut, newChannel, startLogin };
+self.__kb = { tick, publishOne, keepAlive, fetchPackage, recordResult, beijing, idbPut, newChannel, startLogin, accountFor, targets, detectIdentity, checkIdentity, getChannels, alreadyPublished };

@@ -28,6 +28,10 @@ function showTab() {
   document.querySelectorAll("nav a").forEach((a) => a.classList.toggle("on", a.dataset.tab === t));
   document.querySelectorAll(".panel").forEach((p) => p.classList.toggle("on", p.id === `p-${t}`));
   if (t === "logs") renderLogs();
+  if (t === "platforms" && S) loadAccounts().then(async () => {
+    if (!dirty) S.acct = ((await chrome.storage.local.get("settings")).settings || {}).acct || {};
+    renderPlatforms();
+  });
   document.querySelector(".savebar").style.display = ["channels", "materials", "voices", "works"].includes(t) ? "none" : ""; // 这几页直接读写仓库，有自己的保存按钮
 }
 window.addEventListener("hashchange", showTab);
@@ -59,6 +63,7 @@ async function load() {
   $("auto").checked = !S.paused;
   $("autoTxt").textContent = S.paused ? "已暂停" : "已开启";
   $("textTpl").value = S.textTemplate;
+  await loadAccounts();
   renderPlatforms();
   renderBrowserEvents();
   renderVars();
@@ -68,6 +73,32 @@ async function load() {
 }
 
 // ───── 平台 ─────
+let ACCOUNTS = [];
+function acctInfo(k) {
+  const mine = ACCOUNTS.filter((a) => a.platform === k);
+  const chosen = (S.acct || {})[k];
+  const cur = chosen === "" ? null : chosen ? mine.find((a) => a.id === chosen) : mine.length === 1 ? mine[0] : null;
+  return { mine, chosen, cur };
+}
+function identText(a, r) {
+  const id = r && r.ident;
+  const rec = a && (S.ident || {})[a.id];
+  if (r && r.error) return `<span class="err">${esc(r.error)}</span>`;
+  if (id) {
+    const nm = id.nickname ? `「${esc(id.nickname)}」` : "（没读到昵称）";
+    const idt = id.id ? (id.via === "cookie" ? "账号指纹已读取" : `账号 ID ${esc(id.uid || "")}`) : '<span class="err">没读到账号 ID，发布前无法核对</span>';
+    const verdict = r.rebound ? '<span class="pill ok">已重新记录</span>' : r.ok === true ? '<span class="pill ok">和记录一致</span>' : r.ok === false ? '<span class="pill bad">不是记录的账号</span>' : id.id ? '<span class="pill brand">已记录</span>' : "";
+    return `当前登录${nm} · ${idt} ${verdict}`;
+  }
+  if (rec) return `已记录：「${esc(rec.nickname || "未知昵称")}」 · ${rec.via === "cookie" ? "按账号指纹核对" : "按账号 ID 核对"} · ${esc((rec.time || "").slice(5, 16))}`;
+  return "还没识别过账号；第一次发布或扫码登录时会自动记录";
+}
+async function loadAccounts() {
+  const { channels } = await chrome.storage.local.get("channels");
+  ACCOUNTS = (channels && channels.accounts) || [];
+  const st = (await chrome.storage.local.get("settings")).settings || {};
+  S.ident = st.ident || {};
+}
 function renderPlatforms() {
   const box = $("platList");
   box.innerHTML = "";
@@ -95,6 +126,39 @@ function renderPlatforms() {
     };
     row.append(btn, sw);
     box.appendChild(row);
+    if (on) {
+      const { mine, chosen, cur } = acctInfo(k);
+      const ac = document.createElement("div");
+      ac.className = "acct";
+      if (!ACCOUNTS.length) {
+        ac.innerHTML = `<span class="muted">仓库里还没有登记账号（按旧方式：这个平台的所有频道都发到这里登录的号）。要多账号管理，到「<a href="#channels">频道</a>」页的「账号」里添加。</span>`;
+      } else {
+        ac.innerHTML = `<label>这个浏览器登录的是 <select data-acct="${k}">
+            ${mine.map((a) => `<option value="${esc(a.id)}" ${cur && cur.id === a.id ? "selected" : ""}>${esc(a.name)}</option>`).join("")}
+            <option value="" ${chosen === "" || (!cur && mine.length !== 1) ? "selected" : ""}>不在这个浏览器发（交给别的 Chrome）</option></select></label>
+          ${!mine.length ? `<span class="err">仓库里没有${P.name}账号，到「频道」页添加</span>` : ""}
+          <div class="idt" data-idt="${k}">${cur ? identText(cur) : ""}</div>
+          ${cur ? `<div class="idb"><button class="btn sm" type="button" data-identify="${k}">识别账号</button><button class="btn sm ghost" type="button" data-rebind="${k}">重新识别（有意换号）</button></div>` : ""}`;
+        ac.querySelector("select").onchange = (e) => {
+          S.acct = { ...(S.acct || {}), [k]: e.target.value };
+          markDirty();
+          renderPlatforms();
+        };
+        const run = async (rebind) => {
+          if (dirty) return toast("先点「保存设置」，再识别账号");
+          if (rebind && !confirm(`用这个 Chrome 当前登录的${P.name}账号，覆盖「${cur.name}」原来的记录？只有你有意换号时才这样做。`)) return;
+          const el = ac.querySelector(`[data-idt="${k}"]`);
+          el.textContent = "正在打开页面识别……（约 10 秒）";
+          const r = await chrome.runtime.sendMessage({ type: "identify", platform: k, rebind });
+          await loadAccounts();
+          el.innerHTML = identText(cur, r || { error: "没有响应" });
+        };
+        const b1 = ac.querySelector("[data-identify]"), b2 = ac.querySelector("[data-rebind]");
+        if (b1) b1.onclick = () => run(false);
+        if (b2) b2.onclick = () => run(true);
+      }
+      box.appendChild(ac);
+    }
   }
 }
 
@@ -372,6 +436,7 @@ $("save").onclick = async () => {
   S.paused = !$("auto").checked;
   const out = { ...S };
   delete out.webhook; // 旧版字段，已迁移为推送渠道
+  out.ident = ((await chrome.storage.local.get("settings")).settings || {}).ident || {}; // 账号记录由后台维护，以存储里最新的为准
   await chrome.storage.local.set({ settings: out });
   dirty = false;
   $("saveState").textContent = `已保存 · ${nowStamp().slice(11, 16)}`;
@@ -397,10 +462,15 @@ $("clearLog").onclick = async () => {
   await chrome.storage.local.set({ logs: [] });
   renderLogs();
 };
-chrome.storage.onChanged.addListener((c) => {
+chrome.storage.onChanged.addListener(async (c) => {
   if (c.login) {
     login = c.login.newValue || {};
     if (S) renderPlatforms();
+  }
+  if ((c.channels || c.settings) && S) { // 频道页保存了账号、后台记录了账号身份 → 刷新「发布平台」
+    await loadAccounts();
+    if (c.settings && !dirty) S.acct = (c.settings.newValue || {}).acct || {}; // 没有未保存的修改时，跟存储保持一致
+    renderPlatforms();
   }
   if (c.logs && location.hash === "#logs") renderLogs();
 });

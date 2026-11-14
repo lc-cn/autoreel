@@ -27,6 +27,17 @@ async function render() {
   const off = Object.keys(PLATFORMS).filter((k) => !enabled[k]);
   const { date, hm } = bj();
   const day = state[date] || {};
+  // 这个浏览器在各平台代表哪个账号（和后台 accountFor 的规则一致）
+  const ACC = (channels && channels.accounts) || [];
+  const acctOf = (k) => {
+    if (!ACC.length) return { id: k, name: "", legacy: true };
+    const ch = (settings.acct || {})[k];
+    if (ch === "") return null;
+    if (ch) return ACC.find((a) => a.id === ch) || null;
+    const mine = ACC.filter((a) => a.platform === k);
+    return mine.length === 1 ? mine[0] : null;
+  };
+  const forMe = (slot, k) => { const A = acctOf(k); return !!A && (!slot.to || slot.to.includes(A.id) || (A.legacy && slot.to.includes(k))); };
 
   // 顶部：下一条
   const pending = SLOTS.filter((s) => on.some((p) => !((day[s.key] || {})[p] || {}).published));
@@ -80,7 +91,9 @@ async function render() {
     const pill = !s ? '<span class="pill">未检查</span>' : s.ok ? '<span class="pill ok">已登录</span>' : '<span class="pill bad">登录失效</span>';
     const row = document.createElement("div");
     row.className = "plat";
-    row.innerHTML = `<span class="badge ${k}">${LETTER[k]}</span><div class="meta"><b>${PLATFORMS[k].name}</b><small>${s ? `${s.time.slice(5, 16)} 检查` : "还没检查过登录状态"}</small></div>${pill}`;
+    const A = acctOf(k), id = A && (settings.ident || {})[A.id];
+    const who = A && !A.legacy ? ` · ${A.name}${id && id.nickname ? `（${id.nickname}）` : ""}` : !A ? " · 不在本机发" : id && id.nickname ? `（${id.nickname}）` : "";
+    row.innerHTML = `<span class="badge ${k}">${LETTER[k]}</span><div class="meta"><b>${PLATFORMS[k].name}${who.replace(/[<>&"]/g, "")}</b><small>${s ? `${s.time.slice(5, 16)} 检查` : "还没检查过登录状态"}</small></div>${pill}`;
     const b = document.createElement("button");
     b.className = "btn sm";
     b.textContent = s && s.ok ? "重新登录" : "扫码登录";
@@ -102,7 +115,9 @@ async function render() {
   const S = $("slots");
   S.innerHTML = "";
   for (const s of SLOTS) {
-    const chips = on.map((k) => {
+    const mine = on.filter((k) => forMe(s, k));
+    const chips = (mine.length ? mine : on).map((k) => {
+      if (!mine.length) return "";
       const r = (day[s.key] || {})[k];
       const name = on.length > 1 ? PLATFORMS[k].name : "";
       if (r && r.published) return `<span class="pill ok">${name || "已发布"}</span>`;
@@ -115,7 +130,7 @@ async function render() {
     const title = (titles[tag] || "").replace(/^[^｜]*｜/, "");
     const row = document.createElement("div");
     row.className = "slot";
-    row.innerHTML = `<time>${times[s.key] === "00:00" ? "就绪即发" : times[s.key]}</time><span class="nm">${s.name}${title ? `<small title="${title.replace(/"/g, "'")}">${title}</small>` : ""}</span><span class="st">${chips.join("") || '<span class="pill">—</span>'}</span><button class="more" title="更多操作" aria-label="更多操作">⋯</button>`;
+    row.innerHTML = `<time>${times[s.key] === "00:00" ? "就绪即发" : times[s.key]}</time><span class="nm">${s.name}${title ? `<small title="${title.replace(/"/g, "'")}">${title}</small>` : ""}</span><span class="st">${chips.join("") || '<span class="pill plain" title="这个频道没有分配给本机登录的账号，由别的 Chrome 发布">其他浏览器发</span>'}</span><button class="more" title="更多操作" aria-label="更多操作">⋯</button>`;
     row.querySelector(".more").onclick = (e) => openMenu(e, s);
     S.appendChild(row);
   }

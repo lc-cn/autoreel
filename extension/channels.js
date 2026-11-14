@@ -30,6 +30,8 @@ const FIELDS = [
   { k: "tone", label: "语气人设", type: "text", help: "例如「新闻主播式播报：简洁、客观」「像跟朋友聊天」" },
   { k: "hashtags", label: "固定话题", type: "list", help: "用逗号或空格分隔，第一个是频道的固定话题" },
   { k: "collection", label: "抖音合集名", type: "text" },
+  { sec: "发往哪些账号" },
+  { k: "publish_to", label: "发布账号", type: "accounts", help: "勾选这个频道要发到的账号；每个账号在登录了它的那个 Chrome 里由插件发布" },
   { sec: "时间（北京时间）" },
   { k: "schedule.publish", label: "发布时间", type: "time", help: "插件到这个时间才发布；00:00 表示视频到了就发" },
   { k: "schedule.make", label: "开始制作", type: "time", help: "只是记录。改了要在你的 AI 工具里同步修改定时任务" },
@@ -132,6 +134,12 @@ function validate(id) {
   if (v.speed != null && !(v.speed >= 0.8 && v.speed <= 1.25)) errs.push("语速倍率应在 0.8–1.25 之间");
   if (v.voice && R.voices.length && !R.voices.includes(v.voice)) warns.push(`仓库 tools/voices/ 里没有「${v.voice}」这个音色`);
   if (!(c.hashtags || []).length) warns.push("没有固定话题");
+  if (Array.isArray(c.publish_to)) {
+    const ids = (E.cfg.accounts || []).map((a) => a.id);
+    if (!c.publish_to.length) errs.push("至少选一个发布账号；不想发了就在左侧列表关掉这个频道");
+    const bad = c.publish_to.filter((x) => !ids.includes(x));
+    if (bad.length) errs.push(`发布账号里有已删除的账号：${bad.join("、")}`);
+  }
   if (!E.ch[id].brief.trim()) errs.push("写稿规则（brief.md）不能为空，AI 靠它找选题和写稿");
   return { errs, warns };
 }
@@ -161,6 +169,14 @@ function fieldHTML(f, c) {
       input = `<span class="spd"><input type="range" id="${id}" min="0.85" max="1.2" step="0.01" value="${s}" /><b id="${id}_t">${s.toFixed(2)}× · ${rateText(s)}</b><button class="btn sm" type="button" id="${id}_r">恢复默认</button></span>`;
       break;
     }
+    case "accounts": {
+      const acc = E.cfg.accounts || [];
+      if (!acc.length) { input = '<div class="muted">还没有登记账号，先在上方「账号」里添加。</div>'; break; }
+      const all = !Array.isArray(val);
+      const PN = { douyin: "抖音", channels: "视频号", kuaishou: "快手" };
+      input = `<div class="accs" id="${id}">${acc.map((a) => `<label class="check"><input type="checkbox" value="${esc(a.id)}" ${all || val.includes(a.id) ? "checked" : ""} /> ${esc(PN[a.platform] || a.platform)} · ${esc(a.name)}</label>`).join("")}</div>${all ? '<span class="help">现在是默认：发往全部账号</span>' : ""}`;
+      break;
+    }
     case "hook": {
       const H = { count: "今日 N 条（合集类，如热点快报）", topic: "话题大字（一期讲一个主题）", date: "日期大字（每日一 X、历史上的今天）" };
       input = `<select id="${id}">${Object.entries(H).map(([k, t]) => `<option value="${k}" ${k === (val || "count") ? "selected" : ""}>${esc(t)}</option>`).join("")}</select>`;
@@ -180,7 +196,7 @@ function fieldHTML(f, c) {
     }
     default: input = `<input type="text" id="${id}" value="${esc(val ?? "")}" />`;
   }
-  const wide = ["palette", "speed"].includes(f.type) || ["tone", "intro", "outro"].includes(f.k);
+  const wide = ["palette", "speed", "accounts"].includes(f.type) || ["tone", "intro", "outro"].includes(f.k);
   return `<label class="field${wide ? " wide" : ""}"><span class="label">${esc(f.label)}</span>${input}${f.help ? `<span class="help">${esc(f.help)}</span>` : ""}</label>`;
 }
 
@@ -195,6 +211,15 @@ function bindField(f, id) {
       done();
     };
     $(`${fid}_0`).oninput = $(`${fid}_1`).oninput = h;
+    return;
+  }
+  if (f.type === "accounts") {
+    const box = $(fid);
+    if (!box) return;
+    box.querySelectorAll("input").forEach((i) => i.onchange = () => {
+      c().publish_to = [...box.querySelectorAll("input:checked")].map((x) => x.value);
+      done();
+    });
     return;
   }
   if (f.type === "deco") {
@@ -284,8 +309,45 @@ function renderContent() {
   $("g_decl").oninput = () => { pb.declaration = $("g_decl").value.trim() || "内容由AI生成"; updateDirty(); };
 }
 
+const PNAME = { douyin: "抖音", channels: "视频号", kuaishou: "快手" };
+let LOCAL_IDENT = {};
+chrome.storage.local.get("settings").then(({ settings }) => { LOCAL_IDENT = (settings && settings.ident) || {}; });
+function renderAccounts() {
+  const acc = E.cfg.accounts || (E.cfg.accounts = []);
+  $("gAccounts").innerHTML = (acc.length ? acc.map((a, i) => {
+    const id = LOCAL_IDENT[a.id];
+    const used = R.channels.filter((c) => { const t = E.ch[c.id].json && E.ch[c.id].json.publish_to; return !Array.isArray(t) || t.includes(a.id); }).length;
+    return `<div class="acr"><span class="badge ${a.platform}" style="width:26px;height:26px;font-size:12px">${PNAME[a.platform].slice(0, 1)}</span>
+      <input type="text" data-an="${i}" value="${esc(a.name)}" maxlength="16" />
+      <span class="muted">${esc(PNAME[a.platform])} · ${esc(a.id)} · ${used} 个频道${id ? ` · 本机已识别「${esc(id.nickname || "未知昵称")}」` : ""}</span>
+      <button class="btn sm danger" type="button" data-ad="${i}">删除</button></div>`;
+  }).join("") : '<div class="muted">还没有登记账号：插件按旧方式，每个开启的平台把所有频道都发到这个浏览器登录的号。</div>') +
+    `<div class="add" style="margin-top:10px"><select id="a_pf">${Object.entries(PNAME).map(([k, n]) => `<option value="${k}">${n}</option>`).join("")}</select><button class="btn sm" type="button" id="a_add">添加账号</button></div>
+     <p class="help">昵称只用来显示；插件靠平台账号 ID 区分账号，第一次在某个 Chrome 里发布或扫码登录时自动记录，之后发布前都会核对。</p>`;
+  $("gAccounts").querySelectorAll("[data-an]").forEach((el) => el.oninput = () => { acc[+el.dataset.an].name = el.value.trim() || acc[+el.dataset.an].id; updateDirty(); renderList(); });
+  $("gAccounts").querySelectorAll("[data-ad]").forEach((el) => el.onclick = () => {
+    const a = acc[+el.dataset.ad];
+    if (!confirm(`删除账号「${a.name}」？已勾选它的频道会去掉这个账号。`)) return;
+    acc.splice(+el.dataset.ad, 1);
+    for (const id of Object.keys(E.ch)) { const j = E.ch[id].json; if (j && Array.isArray(j.publish_to)) j.publish_to = j.publish_to.filter((x) => x !== a.id); }
+    render(); updateDirty();
+  });
+  $("a_add").onclick = () => {
+    const pf = $("a_pf").value;
+    let n = acc.filter((a) => a.platform === pf).length + 1, id = `${pf}_${n === 1 ? "main" : n}`;
+    while (acc.find((a) => a.id === id)) id = `${pf}_${++n}`;
+    // 没单独设置过的频道原本是「发往全部账号」，先固定成现有账号，新账号要你勾选了才会发
+    const before = acc.map((a) => a.id);
+    for (const cid of Object.keys(E.ch)) { const j = E.ch[cid].json; if (j && !Array.isArray(j.publish_to) && before.length) j.publish_to = [...before]; }
+    acc.push({ id, platform: pf, name: `${PNAME[pf]}${n === 1 ? "主号" : "账号" + n}` });
+    render(); updateDirty();
+    toast("已添加，记得在要发往这个账号的频道里勾选它");
+  };
+}
+
 function renderGlobal() {
   renderContent();
+  renderAccounts();
   const v = E.cfg.voice || (E.cfg.voice = {});
   const cv = v.cosyvoice || (v.cosyvoice = {});
   const s = cv.speed ?? 1.06;

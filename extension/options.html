@@ -32,6 +32,10 @@
   .plat .meta b { font-size: 14px; }
   .plat .meta div { color: var(--mute); font-size: 12px; }
   .plat.disabled .badge { filter: grayscale(1); opacity: .5; }
+  .acct { margin: -6px 0 12px 42px; padding: 10px 12px; border-radius: 10px; background: var(--surface-2); font-size: 12.5px; }
+  .acct select { width: auto; display: inline-block; margin-left: 6px; padding: 4px 8px; }
+  .acct .idt { margin-top: 6px; color: var(--ink-2); }
+  .acct .idb { margin-top: 6px; display: flex; gap: 6px; }
   .evs { display: flex; flex-wrap: wrap; gap: 8px 18px; margin-top: 6px; }
   .vars { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
   .var { font: 11.5px var(--mono); padding: 3px 8px; border-radius: 7px; background: var(--brand-soft); color: var(--brand); border: none; cursor: pointer; }
@@ -65,6 +69,11 @@
   .chmain h3:first-child { border-top: none; padding-top: 0; margin-top: 0; }
   .rng { display: flex; align-items: center; gap: 8px; }
   .chmain .field.wide { grid-column: 1 / -1; }
+  .accs { display: flex; flex-wrap: wrap; gap: 8px 18px; padding: 6px 0; }
+  .acr { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-top: 1px solid var(--line); }
+  .acr:first-child { border-top: none; }
+  .acr input[type=text] { width: 160px; }
+  .acr .muted { flex: 1; font-size: 12px; }
   .pal { margin-top: 8px; display: flex; gap: 12px; align-items: center; }
   .pal .pv { width: 260px; height: 92px; border-radius: 10px; padding: 12px 14px; color: #fff; display: flex; flex-direction: column; justify-content: center; position: relative; overflow: hidden; }
   .pal .pv i { position: absolute; left: 14px; top: 16px; width: 4px; height: 26px; border-radius: 2px; }
@@ -196,6 +205,11 @@
         <div id="gVoice"></div>
       </section>
       <section class="card">
+        <h2>账号</h2>
+        <p class="desc">各平台的发布账号，写在 autoreel.config.json。同一平台的多个账号各用一个 Chrome 用户资料登录，在那个 Chrome 插件的「发布平台」里选它是哪个账号。</p>
+        <div id="gAccounts"></div>
+      </section>
+      <section class="card">
         <h2>内容规范</h2>
         <p class="desc">所有频道共用的找资料和发布规则，写在 autoreel.config.json。</p>
         <div id="gContent"></div>
@@ -249,7 +263,7 @@
     <div class="panel" id="p-platforms">
       <section class="card">
         <h2>发布平台</h2>
-        <p class="desc">关闭的平台不会被任何操作触发：不发布、不检查登录、不打开页面、不发通知。</p>
+        <p class="desc">关闭的平台不会被任何操作触发：不发布、不检查登录、不打开页面、不发通知。同一个平台有多个账号时，每个账号用一个单独的 Chrome 用户资料（各自装插件、各自扫码登录），在这里选这个浏览器登录的是哪个账号；频道发往哪些账号在「频道」页设置。插件发布前会核对账号 ID，对不上就不发。</p>
         <div id="platList"></div>
       </section>
     </div>

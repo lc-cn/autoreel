@@ -79,6 +79,17 @@ def check(cid):
             errs.append(f"voice.{k}「{v[k]}」不在可选语气里：{'、'.join(moods)}")
     if "speed" in v and not (isinstance(v["speed"], (int, float)) and 0.8 <= v["speed"] <= 1.25):
         errs.append("voice.speed 是语速倍率，应在 0.8–1.25 之间（1 为默认）")
+    if "publish_to" in c:
+        try:
+            cfg_ = json.load(open(os.path.join(ROOT, "autoreel.config.json"), encoding="utf-8"))
+        except Exception:
+            cfg_ = {}
+        accts = {a.get("id") for a in (cfg_.get("accounts") or []) if isinstance(a, dict)}
+        pt = c["publish_to"]
+        if not isinstance(pt, list) or not pt:
+            errs.append("publish_to 应为至少一个账号 id 的列表；不写表示发往全部账号")
+        elif accts and [x for x in pt if x not in accts]:
+            errs.append(f"publish_to 里有没登记的账号：{'、'.join(x for x in pt if x not in accts)}（账号在 autoreel.config.json 的 accounts 里）")
     if v.get("voice") and not os.path.isdir(os.path.join(ROOT, "tools", "voices", v["voice"])):
         warns.append(f"voice.voice「{v['voice']}」在 tools/voices/ 里找不到，CosyVoice 会出错")
     if c.get("hook") not in ("count", "topic", "date"):

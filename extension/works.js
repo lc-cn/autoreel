@@ -5,6 +5,7 @@ const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 const PLAT = { douyin: "抖音", channels: "视频号", kuaishou: "快手" };
 let H = null, rows = [], names = {}, loaded = false, repoName = "";
+const acctName = {};
 
 function toast(t) { const el = $("toast"); el.textContent = t; el.classList.add("show"); setTimeout(() => el.classList.remove("show"), 2500); }
 const bjDate = (d = new Date()) => new Intl.DateTimeFormat("sv-SE", { timeZone: "Asia/Shanghai" }).format(d);
@@ -34,6 +35,7 @@ async function pull() {
     await Promise.all(chs.map(async (d) => {
       try { names[d.name] = JSON.parse((await readText(`channels/${d.name}/channel.json`, H.head)).text).name || d.name; } catch { names[d.name] = d.name; }
     }));
+    try { (JSON.parse((await readText("autoreel.config.json", H.head)).text).accounts || []).forEach((a) => (acctName[a.id] = `${PLAT[a.platform] || a.platform}·${a.name}`)); } catch {}
     const since = bjDate(new Date(Date.now() - 7 * 86400000));
     rows = (await clipBranches()).filter((b) => b.date >= since).sort((a, b) => (b.date + b.channel).localeCompare(a.date + a.channel));
     renderList();
@@ -68,7 +70,9 @@ function renderRow(r) {
   const el = $(`wk${r.i}`);
   if (!el) return;
   const st = r.st;
-  const plats = st && st.platforms ? Object.entries(st.platforms).filter(([k]) => k !== "douyin" || Object.keys(st.platforms).length > 1).map(([k, v]) => `${PLAT[k] || k}：${v.status === "published" ? "已发布" : v.status}`).join(" · ") : "";
+  const W = { published: "已发布", failed: "失败", gave_up: "已放弃", need_login: "需要登录", wrong_account: "登错账号", declare: "声明没勾上", error: "出错" };
+  const plats = st && st.platforms && Object.keys(st.platforms).length > 1 || (st && st.platforms && !st.platforms.douyin)
+    ? Object.entries(st.platforms).map(([k, v]) => `${acctName[k] || PLAT[k] || k}${v.nickname ? `（${v.nickname}）` : ""}：${W[v.status] || v.status}`).join(" · ") : "";
   el.innerHTML = `
     <div class="wk-m"><span class="pill plain brand">${esc(names[r.channel] || r.channel)}</span>
       <b>${esc((r.meta && r.meta.title) || (r.meta ? "（没有标题）" : "读取中…"))}</b>${statusPill(st)}

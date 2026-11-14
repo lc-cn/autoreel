@@ -8,6 +8,14 @@
     "jiangtou",
     "lishi"
   ],
+  "_accounts说明": "发布账号。同一平台多个账号时，每个账号用一个 Chrome 用户资料登录并装插件，在插件「发布平台」里选它是哪个账号；频道的 publish_to 选发往哪些账号（不写 = 全部）。账号靠平台账号 ID 区分，昵称只用来显示。可以在插件「频道」页管理",
+  "accounts": [
+    {
+      "id": "douyin_main",
+      "platform": "douyin",
+      "name": "抖音主号"
+    }
+  ],
   "_可用频道": "kuaibao 热点快报 / jiangtou 一条讲透 / lishi 历史上的今天 / lengzhishi 一分钟冷知识 / dushu 一分钟读本书 / chengyu 每天一个成语 / haowu 好物推荐（需要你在 inputs/haowu 放产品资料）。想新建频道，对 Claude 说「新建一个频道，讲 XX」",
   "voice": {
     "provider": "auto",
