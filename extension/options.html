@@ -64,6 +64,14 @@
   .chmain h3 { margin: 18px 0 0; font-size: 13.5px; padding-top: 14px; border-top: 1px solid var(--line); }
   .chmain h3:first-child { border-top: none; padding-top: 0; margin-top: 0; }
   .rng { display: flex; align-items: center; gap: 8px; }
+  .chmain .field.wide { grid-column: 1 / -1; }
+  .pal { margin-top: 8px; display: flex; gap: 12px; align-items: center; }
+  .pal .pv { width: 260px; height: 92px; border-radius: 10px; padding: 12px 14px; color: #fff; display: flex; flex-direction: column; justify-content: center; position: relative; overflow: hidden; }
+  .pal .pv i { position: absolute; left: 14px; top: 16px; width: 4px; height: 26px; border-radius: 2px; }
+  .pal .pv b { font-size: 18px; padding-left: 12px; }
+  .pal .pv span { font-size: 12px; opacity: .85; padding-left: 12px; }
+  .pal .sw { display: flex; gap: 4px; flex-wrap: wrap; }
+  .pal .sw span { width: 18px; height: 18px; border-radius: 5px; border: 1px solid var(--line); }
   .spd { display: flex; align-items: center; gap: 10px; }
   .spd input[type=range] { flex: 1; accent-color: var(--brand); }
   .spd b { font-size: 12.5px; white-space: nowrap; min-width: 150px; }
@@ -75,6 +83,31 @@
   details.adv summary { cursor: pointer; color: var(--brand); font-weight: 600; }
   #f_brief { min-height: 260px; }
   @media (max-width: 760px) { .chwrap { grid-template-columns: 1fr; } .chside { position: static; } }
+  .mf { border: 1px solid var(--line); border-radius: 12px; margin-top: 10px; }
+  .mf:first-child { margin-top: 0; }
+  .mf-h { display: flex; gap: 10px; align-items: baseline; padding: 12px 14px; cursor: pointer; }
+  .mf-b { display: none; padding: 0 14px 14px; }
+  .mf.open .mf-b { display: block; }
+  .fi { border-top: 1px solid var(--line); padding: 10px 0; }
+  .fi.gone { opacity: .5; }
+  .fi-h, .fi.med { display: flex; align-items: center; gap: 8px; }
+  .fi .sp, .wk .sp { flex: 1; }
+  .fi textarea { margin-top: 8px; }
+  .fi-m { display: flex; flex-direction: column; }
+  .thumb { width: 72px; height: 72px; border-radius: 8px; background: var(--surface-2); display: grid; place-items: center; color: var(--mute); font-size: 11px; overflow: hidden; cursor: zoom-in; flex: none; }
+  .thumb img, .thumb video { width: 100%; height: 100%; object-fit: cover; }
+  .vc { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 10px 0; border-top: 1px solid var(--line); }
+  .vc:first-child { border-top: none; }
+  .vc-m { flex: 1; min-width: 200px; }
+  .vc-m b { margin-right: 6px; }
+  .vc audio { width: 100%; }
+  #wkList h3 { margin: 16px 0 4px; font-size: 13px; color: var(--ink-2); }
+  .wk { border-top: 1px solid var(--line); padding: 10px 0; }
+  .wk-m { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .wk-a { display: flex; gap: 6px; margin-top: 6px; }
+  .wk-x video { margin-top: 8px; max-height: 480px; border-radius: 10px; background: #000; }
+  .wk-x pre.cap { margin: 8px 0 0; padding: 10px 12px; border-radius: 10px; background: var(--surface-2); white-space: pre-wrap; font-size: 12.5px; line-height: 1.6; }
+  .err { color: var(--bad); }
   .savebar { position: fixed; left: 0; right: 0; bottom: 0; background: color-mix(in srgb, var(--surface) 92%, transparent); backdrop-filter: blur(8px); border-top: 1px solid var(--line); }
   .savebar-in { max-width: 1180px; margin: 0 auto; padding: 10px 20px; display: flex; align-items: center; gap: 12px; }
   .savebar .state { color: var(--mute); font-size: 12.5px; }
@@ -102,6 +135,9 @@
   <nav class="card">
     <a href="#basic" data-tab="basic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12h18M3 6h18M3 18h12"/></svg>基本设置</a>
     <a href="#channels" data-tab="channels"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><path d="M14 17.5h7M17.5 14v7"/></svg>频道</a>
+    <a href="#materials" data-tab="materials"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>素材</a>
+    <a href="#voices" data-tab="voices"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>音色</a>
+    <a href="#works" data-tab="works"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m10 9 5 3-5 3z"/></svg>作品</a>
     <a href="#platforms" data-tab="platforms"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="14" rx="2"/><path d="M8 21h8"/></svg>发布平台</a>
     <a href="#notify" data-tab="notify"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>消息推送</a>
     <a href="#logs" data-tab="logs"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h6"/></svg>运行日志</a>
@@ -159,10 +195,54 @@
         <p class="desc">所有频道共用，写在 autoreel.config.json。</p>
         <div id="gVoice"></div>
       </section>
+      <section class="card">
+        <h2>内容规范</h2>
+        <p class="desc">所有频道共用的找资料和发布规则，写在 autoreel.config.json。</p>
+        <div id="gContent"></div>
+      </section>
       <div class="chwrap">
         <section class="card chside"><div class="card-h">频道列表<span class="sub">开关 = 是否启用</span></div><div id="chList"></div></section>
         <section class="card chmain"><div id="chChecks" class="checks"></div><div id="chBody"><div class="muted">点「从仓库拉取」读取频道。</div></div></section>
       </div>
+    </div>
+
+    <!-- 素材 -->
+    <div class="panel" id="p-materials">
+      <section class="card">
+        <div class="card-h" style="font-size:15px">素材<span class="sub"><span class="pill" id="mtDirty"></span> <button class="btn sm" type="button" id="mtPull">从仓库拉取</button> <button class="btn sm primary" type="button" id="mtSave" disabled>保存到仓库</button></span></div>
+        <p class="desc" style="margin:0">仓库 inputs/ 里给 AI 用的资料：书单、产品资料、图片和视频。需要你提供素材的频道，AI 只用这里的内容。<span class="muted" id="mtState"></span></p>
+      </section>
+      <section class="card" id="mtBody"><div class="muted">点「从仓库拉取」读取素材。</div></section>
+    </div>
+
+    <!-- 音色 -->
+    <div class="panel" id="p-voices">
+      <section class="card">
+        <div class="card-h" style="font-size:15px">音色<span class="sub"><button class="btn sm" type="button" id="vcPull">从仓库拉取</button></span></div>
+        <p class="desc" style="margin:0">CosyVoice 按参考录音的音色和语气来配音（仓库 tools/voices/）。试听、设默认音色；单个频道用哪个音色在「频道」页选。<span class="muted" id="vcState"></span></p>
+        <div id="vcList" style="margin-top:10px"></div>
+      </section>
+      <section class="card">
+        <h2>新增音色</h2>
+        <p class="desc">上传或录一段 5–15 秒、安静环境下的清晰录音，并填写录音里逐字说的话。录音的语气会带到成片里：想要播报腔就用播报的语气读。</p>
+        <div class="grid2">
+          <label class="field"><span class="label">音色名称</span><input type="text" id="nvName" placeholder="例如：我的声音" maxlength="12" /><span class="help">最多 12 个字，不能和已有的重名</span></label>
+          <div class="field"><span class="label">录音</span><span class="rng"><button class="btn" type="button" id="nvRec">开始录音</button><button class="btn" type="button" id="nvUpload">上传音频文件</button><input type="file" id="nvFile" accept="audio/*" hidden /></span><span class="help" id="nvInfo"></span></div>
+        </div>
+        <audio id="nvAudio" controls hidden style="margin-top:10px;width:100%"></audio>
+        <label class="field"><span class="label">录音里说的话（逐字一致）</span><textarea id="nvText" rows="2"></textarea><span class="help">录音时照着读这段，或者改成你录音里实际说的话。文字和录音对不上，配出来的声音会不稳定。</span></label>
+        <label class="check" style="margin-top:12px"><input type="checkbox" id="nvConsent" /> 这是我本人的声音，或者我已经获得声音主人的授权</label>
+        <div style="margin-top:12px"><button class="btn primary" type="button" id="nvSave" disabled>保存到仓库</button></div>
+      </section>
+    </div>
+
+    <!-- 作品 -->
+    <div class="panel" id="p-works">
+      <section class="card">
+        <div class="card-h" style="font-size:15px">作品<span class="sub"><button class="btn sm" type="button" id="wkPull">刷新</button></span></div>
+        <p class="desc" style="margin:0">最近 7 天每个频道每期的成品和发布状态（仓库里的 clip-日期-频道 分支）。<span class="muted" id="wkState"></span></p>
+        <div id="wkList" style="margin-top:6px"></div>
+      </section>
     </div>
 
     <!-- 发布平台 -->
@@ -213,5 +293,8 @@
 <div class="toast" id="toast"></div>
 <script src="options.js" type="module"></script>
 <script src="channels.js" type="module"></script>
+<script src="materials.js" type="module"></script>
+<script src="voices.js" type="module"></script>
+<script src="works.js" type="module"></script>
 </body>
 </html>

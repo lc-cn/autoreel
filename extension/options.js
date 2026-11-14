@@ -28,7 +28,7 @@ function showTab() {
   document.querySelectorAll("nav a").forEach((a) => a.classList.toggle("on", a.dataset.tab === t));
   document.querySelectorAll(".panel").forEach((p) => p.classList.toggle("on", p.id === `p-${t}`));
   if (t === "logs") renderLogs();
-  document.querySelector(".savebar").style.display = t === "channels" ? "none" : ""; // 频道页有自己的「保存到仓库」
+  document.querySelector(".savebar").style.display = ["channels", "materials", "voices", "works"].includes(t) ? "none" : ""; // 这几页直接读写仓库，有自己的保存按钮
 }
 window.addEventListener("hashchange", showTab);
 
@@ -64,6 +64,7 @@ async function load() {
   renderVars();
   renderPreview();
   renderChannels();
+  markReady();
 }
 
 // ───── 平台 ─────
@@ -310,9 +311,13 @@ $("auto").onchange = () => {
 };
 // ───── 仓库和令牌：填完就自动保存（不用先点「保存设置」，测速、频道页就能用）─────
 const normRepo = (v) => v.trim().replace(/^https:\/\/github\.com\//, "").replace(/\.git$/, "").replace(/\/$/, "");
+let markReady;
+const ready = new Promise((r) => (markReady = r)); // 设置页把已保存的值填进输入框之后才允许自动保存
 async function saveRepoToken() {
+  await ready;
   const repo = normRepo($("repo").value), token = $("token").value.trim();
   const { settings = {} } = await chrome.storage.local.get("settings");
+  if (!repo || !token) return false; // 只在两项都填了时自动保存，绝不用空值覆盖
   if (settings.repo === repo && settings.token === token) return false;
   await chrome.storage.local.set({ settings: { ...settings, repo, token } });
   if (S) Object.assign(S, { repo, token });

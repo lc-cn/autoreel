@@ -64,7 +64,7 @@ export async function loadRepo() {
   return { private: repo.private, name: repo.full_name, def, head, cfg: { ...cfg, json: JSON.parse(cfg.text) }, channels: channels.filter(Boolean), palettes, voices };
 }
 
-// 写入：files = [{path, text, sha}]（sha 是读取时的版本，用来发现冲突；新文件 sha 为 null）
+// 写入：files = [{path, text | base64 | delete:true, sha}]（sha 是读取时的版本，用来发现冲突；新文件 sha 为 null）
 export async function saveFiles(def, files, message) {
   const head = (await api(`git/ref/heads/${encodeURIComponent(def)}`)).object.sha;
   const changed = [];
@@ -78,7 +78,15 @@ export async function saveFiles(def, files, message) {
     throw e;
   }
   const base = await api(`git/commits/${head}`);
-  const tree = await api("git/trees", { method: "POST", body: { base_tree: base.tree.sha, tree: files.map((f) => ({ path: f.path, mode: "100644", type: "blob", content: f.text })) } });
+  const entries = [];
+  for (const f of files) {
+    if (f.delete) entries.push({ path: f.path, mode: "100644", type: "blob", sha: null });
+    else if (f.base64 != null) {
+      const b = await api("git/blobs", { method: "POST", body: { content: f.base64, encoding: "base64" } });
+      entries.push({ path: f.path, mode: "100644", type: "blob", sha: b.sha });
+    } else entries.push({ path: f.path, mode: "100644", type: "blob", content: f.text });
+  }
+  const tree = await api("git/trees", { method: "POST", body: { base_tree: base.tree.sha, tree: entries } });
   const commit = await api("git/commits", { method: "POST", body: { message, tree: tree.sha, parents: [head] } });
   try {
     await api(`git/refs/heads/${encodeURIComponent(def)}`, { method: "PATCH", body: { sha: commit.sha, force: false } });
@@ -95,3 +103,52 @@ export async function saveFiles(def, files, message) {
 
 // 和 Python 端（json.dump(indent=2, ensure_ascii=False)）一致的格式
 export const toJSON = (obj) => JSON.stringify(obj, null, 2) + "\n";
+
+// 列目录：[{name, path, type: "file"|"dir", sha, size}]，不存在返回 []
+export async function listDir(path, ref) {
+  try {
+    return await api(`contents/${encodeURI(path)}${ref ? `?ref=${encodeURIComponent(ref)}` : ""}`);
+  } catch (e) {
+    if (e.status === 404) return [];
+    throw e;
+  }
+}
+
+// 读文本文件（不存在返回 {text: null, sha: null}）
+export const readText = getFile;
+
+// 读二进制文件，返回 Blob（音频、图片、视频预览用；单个文件最大 100MB）
+export async function readBlob(path, ref, type = "") {
+  const s = await settings();
+  const r = await fetch(`https://api.github.com/repos/${s.repo}/contents/${encodeURI(path)}${ref ? `?ref=${encodeURIComponent(ref)}` : ""}`, {
+    headers: { Authorization: `Bearer ${s.token}`, Accept: "application/vnd.github.raw", "X-GitHub-Api-Version": "2022-11-28" },
+    cache: "no-store",
+  });
+  if (!r.ok) throw new Error(`读取 ${path} 失败：HTTP ${r.status}`);
+  const b = await r.blob();
+  return type ? new Blob([b], { type }) : b;
+}
+
+// 默认分支和最新提交
+export async function headOf() {
+  const repo = await api("");
+  const def = repo.default_branch;
+  return { def, head: (await api(`git/ref/heads/${encodeURIComponent(def)}`)).object.sha, name: repo.full_name, private: repo.private };
+}
+
+// 成品分支 clip-日期-频道
+export async function clipBranches() {
+  const refs = await api("git/matching-refs/heads/clip-");
+  return refs.map((r) => {
+    const name = r.ref.replace("refs/heads/", "");
+    const m = name.match(/^clip-(\d{4}-\d{2}-\d{2})-([a-z0-9_]+)$/);
+    return m ? { name, date: m[1], channel: m[2], sha: r.object.sha } : null;
+  }).filter(Boolean);
+}
+
+export const blobToBase64 = (blob) => new Promise((res, rej) => {
+  const fr = new FileReader();
+  fr.onload = () => res(String(fr.result).split(",")[1]);
+  fr.onerror = rej;
+  fr.readAsDataURL(blob);
+});
