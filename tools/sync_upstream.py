@@ -28,7 +28,7 @@ STAMP = ".autoreel-upstream"
 
 
 def git(*args, binary=False):
-    r = subprocess.run(["git", "-C", ROOT, *args], capture_output=True)
+    r = subprocess.run(["git", "-c", "core.quotepath=off", "-C", ROOT, *args], capture_output=True)
     if r.returncode != 0:
         raise SystemExit(f"git {' '.join(args)} 失败：{r.stderr.decode(errors='replace').strip()}")
     return r.stdout if binary else r.stdout.decode()
