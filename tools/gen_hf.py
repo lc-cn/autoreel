@@ -131,19 +131,32 @@ def phrases(text, t0, t1):
         if len(p) <= 13:
             final.append(p); continue
         import rjieba, math
-        words = rjieba.cut(p)
+        words = []  # 日期、带单位的数字整体保留，其余用分词切
+        NUMX = r"(?:\d{4}年)?\d{1,2}月\d{1,2}[日号]|\d{4}年(?:\d{1,2}月)?|\d{1,2}[:：]\d{2}|[\d.,]+[%％]?[万亿千百]*[个月日号年点时分秒天倍元]?"
+        pos = 0
+        for m in re.finditer(NUMX, p):
+            words += list(rjieba.cut(p[pos:m.start()])) if m.start() > pos else []
+            words.append(m.group())
+            pos = m.end()
+        words += list(rjieba.cut(p[pos:])) if pos < len(p) else []
         parts_n = math.ceil(len(p) / 13); goal = len(p) / parts_n
         cur = ""
         for w in words:
             if cur and (len(cur) + len(w) > 13 or len(cur) >= goal):
                 final.append(cur); cur = ""
             cur += w
-        if cur: final.append(cur)
+        if cur:
+            if len(cur) <= 3 and final and len(final[-1]) + len(cur) <= 16:  # 尾巴太短就并回前一段
+                final[-1] += cur
+            else:
+                final.append(cur)
     merged = final
-    n = sum(len(p) for p in merged)
+    import textnorm
+    w = [max(1, len(textnorm.spoken(p))) for p in merged]  # 按念出来的字数分配时间（9970亿 念 7 个字）
+    n = sum(w)
     out, t = [], t0
-    for p in merged:
-        d = (t1 - t0) * len(p) / n
+    for p, wp in zip(merged, w):
+        d = (t1 - t0) * wp / n
         out.append((p.rstrip("，。、；："), t, t + d)); t += d
     return out
 

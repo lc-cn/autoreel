@@ -14,7 +14,8 @@ synth.last 里还有 sents（每句的文字和起止秒数，字幕用）和 re
   2. 情绪（mood）：每段可以指定语气，见 MOODS；CosyVoice3 用语气指令，火山引擎用情感参数或语音指令。
   3. 语速（pace）：慢 / 中 / 快，用模型自己的语速参数调，不做事后硬加速（硬加速会让吐字发糊）。
   4. 节奏：句号、问号、感叹号、省略号后的停顿长短不同，段与段之间停得更久。
-  5. 读音：多音字用 {字|拼音} 标注，例如 {行|háng}、{重|chóng}庆；**重点** 会加重语气（CosyVoice3）。
+  5. 读法：稿子按字幕的样子写（11月12日、6.3%、9970亿），配音前由 textnorm.spoken 自动转成读法，字幕照原样显示；
+     自动判断不了的写 {显示|读法}，例如 {11.12|十一月十二日}；多音字用 {字|拼音}，例如 {行|háng}；**重点** 会加重语气（CosyVoice3）。
   6. 清晰度检查：用语音识别把每句转回文字和原稿比对，错得多就换随机种子重做，最多 3 次，留最好的一版。
   7. 响度：去低频噪声、轻度压缩、响度统一到 -16 LUFS（短视频平台常用标准）。
 """
@@ -29,6 +30,9 @@ import urllib.request
 
 import numpy as np
 import soundfile as sf
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import textnorm  # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 SR = 24000  # 统一输出采样率
@@ -307,7 +311,8 @@ def _jobs(lines, provider, speed, seed=0):
         mood = ln.get("mood") or "平稳"
         base = MOODS.get(mood, MOODS["平稳"])[2] * PACE.get(ln.get("pace") or "中", 1.0)
         for si, (s, pause) in enumerate(split_sentences(ln["text"])):
-            jobs.append({"line": li, "raw": s, "text": render_text(s, provider), "mood": mood, "pause": pause,
+            say = textnorm.spoken(s)  # 稿子按字幕写，这里转成读法（数字、日期、百分号……）
+            jobs.append({"line": li, "raw": s, "say": say, "text": render_text(say, provider), "mood": mood, "pause": pause,
                          "speed": round(base * speed, 3), "seed": seed + li * 31 + si})
     return jobs
 
@@ -320,7 +325,7 @@ def _qc_pass(provider, jobs, segs, voice, qc, log):
     """清晰度检查：错得多的句子换随机种子重做，留字错率最低的一版。"""
     if qc is None:
         return [None] * len(jobs)
-    res = [qc.check(a, j["raw"], SR) for a, j in zip(segs, jobs)]
+    res = [qc.check(a, j["say"], SR) for a, j in zip(segs, jobs)]
     for attempt in range(1, QC_TRIES):
         bad = [k for k, r in enumerate(res) if r and r["cer"] > QC_RETRY]
         if not bad:
@@ -333,7 +338,7 @@ def _qc_pass(provider, jobs, segs, voice, qc, log):
             log(f"清晰度：重做失败（{e}），保留原来的版本")
             break
         for k, a in zip(bad, new):
-            r = qc.check(a, jobs[k]["raw"], SR)
+            r = qc.check(a, jobs[k]["say"], SR)
             if r["cer"] < res[k]["cer"]:
                 segs[k], res[k] = a, r
     return res
