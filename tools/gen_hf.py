@@ -81,10 +81,10 @@ def auto_intro(data):
     """开场口播：按频道 intro 模板生成。可用 {name} {date} {n} {topic_say} {categories}。"""
     S = series(data)
     m = re.search(r"(\d+)月(\d+)日", data.get("date", ""))
-    day = f"{cn_num(int(m.group(1)))}月{cn_num(int(m.group(2)))}日" if m else ""
+    day = f"{int(m.group(1))}月{int(m.group(2))}日" if m else ""  # 字幕显示数字，配音时自动转成读法
     cats = categories(data["items"])
     joined = cats[0] if len(cats) == 1 else "、".join(cats[:-1]) + "和" + cats[-1]
-    return S.get("intro", "{name}，{date}。").format(name=S["name"], date=day, n=cn_num(len(data["items"])),
+    return S.get("intro", "{name}，{date}。").format(name=S["name"], date=day, n=len(data["items"]),
                                                     topic_say=data.get("topic_say") or data.get("topic", ""), categories=joined)
 
 
