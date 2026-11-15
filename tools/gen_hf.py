@@ -265,6 +265,12 @@ def build(data, times, dur, proj, spoken):
     # 分镜：每段按 shot 渲染（文字 / 实拍素材 / 图表 / 地图 / 时间线 / 金句 / 你的素材），失败自动退回文字镜头
     ctx = SC.Ctx(proj, ROOT, os.environ.get("AUTOREEL_CACHE", "/tmp/ziying-footage-cache"))
     scenes, bgs, js, kinds = [], [], [], []
+    if hookline:  # 开场垫实拍：稿子写了 hook_bg 就用它，否则借用第一个实拍镜头的关键词
+        sh = [(it.get("shot") or {}) for it in items]
+        hq = data.get("hook_bg") or next((x.get("query") or x.get("bg") for x in sh if x.get("type") == "footage" or x.get("bg")), None)
+        hb, hj = SC.hook_bg(ctx, hq, 0, hook_end)
+        if hb:
+            bgs.append(hb); js.extend(hj)
     for i, it in enumerate(items):
         h, bg, sj, kind = SC.render(i, n, it, starts[i], ends[i], S, ctx, split_title)
         scenes.append(h); bgs.append(bg); js.extend(sj); kinds.append(kind)
@@ -478,7 +484,7 @@ def main():
         lines_.insert(len(lines_) - 1, "🎬 画面素材：" + "、".join(dict.fromkeys(ctx.credits)) + "（免版权素材）")
         cap = "\n".join(lines_)
         open(cap_path, "w").write(cap)
-    for w in (ctx.warnings if ctx else []):
+    for w in dict.fromkeys(ctx.warnings if ctx else []):  # 同一条提醒只打印一次
         print(f"提醒：{w}")
     if ctx:
         print("分镜：" + " / ".join(f"{i + 1}.{k}" for i, k in enumerate(build.kinds)))

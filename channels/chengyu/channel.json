@@ -12,17 +12,17 @@
   "outro": "学会了吗？关注我，每天一个成语，一年多懂三百多个。",
   "items": [
     3,
-    4
+    3
   ],
   "say_chars": [
-    45,
-    70
+    40,
+    55
   ],
   "say_total": [
-    180,
-    250
+    120,
+    160
   ],
-  "max_seconds": 70,
+  "max_seconds": 48,
   "numbering": "none",
   "hashtags": [
     "每天一个成语",

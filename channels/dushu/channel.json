@@ -15,14 +15,14 @@
     4
   ],
   "say_chars": [
-    50,
-    75
+    40,
+    55
   ],
   "say_total": [
-    200,
-    280
+    130,
+    180
   ],
-  "max_seconds": 80,
+  "max_seconds": 52,
   "numbering": "spoken",
   "hashtags": [
     "读书",

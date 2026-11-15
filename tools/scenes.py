@@ -96,12 +96,13 @@ class Ctx:
         except Exception as ex:  # noqa: BLE001
             self.warnings.append(f"素材模块不可用：{ex}")
             return None
+        where = "开场" if i == "h" else f"第 {i + 1} 段"
         if not footage.available():
             self.warnings.append("没有 PEXELS_API_KEY / PIXABAY_API_KEY，实拍镜头改为文字镜头")
             return None
         r = footage.fetch(query, seconds + 0.6, f"{self.proj}/assets/media/f{i}.mp4", self.cache)
         if not r:
-            self.warnings.append(f"第 {i + 1} 段没找到「{query}」的素材，改为文字镜头")
+            self.warnings.append(f"{where}没找到「{query}」的素材，改为文字镜头")
             return None
         self.credits.append(f"{r['source']}" + (f" · {r['author']}" if r.get("author") else ""))
         return f"assets/media/f{i}.mp4"
@@ -126,6 +127,16 @@ def numbering(S):
     """频道的分段序号：spoken 念出来并显示（默认）、visual 只在画面显示、none 都不要。"""
     v = (S or {}).get("numbering", "spoken")
     return v if v in ("spoken", "visual", "none") else "spoken"
+
+
+def hook_bg(ctx, query, s, e):
+    """开场钩子句下面垫一段实拍视频（有素材密钥时）；返回 (背景层 html, js)。没有素材就返回空，开场照常只显示文字。"""
+    if not query:
+        return "", []
+    src = ctx.footage("h", query, e - s)
+    if not src:
+        return "", []
+    return _bg_video("h", src, s, e), [f'tl.fromTo("#sh-bgw", {{scale: 1.0}}, {{scale: 1.1, duration: {T(e - s)}, ease: "none"}}, {T(s)});']
 
 
 def render(i, n, it, s, e, S, ctx, split_title):

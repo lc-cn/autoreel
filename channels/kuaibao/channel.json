@@ -12,18 +12,18 @@
   "intro": "{name}，{date}。本期关注{categories}，共{n}条热点。",
   "outro": "以上就是今天的热点，关注我，每天一分钟，看懂天下事。",
   "items": [
-    4,
-    6
+    3,
+    4
   ],
   "say_chars": [
-    40,
-    55
+    35,
+    50
   ],
   "say_total": [
-    200,
-    280
+    120,
+    170
   ],
-  "max_seconds": 65,
+  "max_seconds": 48,
   "numbering": "spoken",
   "hashtags": [
     "热点快报",

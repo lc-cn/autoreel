@@ -15,14 +15,14 @@
     4
   ],
   "say_chars": [
-    45,
-    65
+    35,
+    50
   ],
   "say_total": [
-    180,
-    250
+    120,
+    170
   ],
-  "max_seconds": 70,
+  "max_seconds": 48,
   "numbering": "visual",
   "hashtags": [
     "好物推荐",

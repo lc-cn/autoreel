@@ -15,14 +15,14 @@
     3
   ],
   "say_chars": [
-    60,
-    80
+    40,
+    55
   ],
   "say_total": [
-    200,
-    240
+    120,
+    160
   ],
-  "max_seconds": 75,
+  "max_seconds": 48,
   "numbering": "visual",
   "hashtags": [
     "历史上的今天",

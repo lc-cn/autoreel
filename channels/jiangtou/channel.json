@@ -15,14 +15,14 @@
     4
   ],
   "say_chars": [
-    50,
-    70
+    40,
+    55
   ],
   "say_total": [
-    200,
-    260
+    140,
+    190
   ],
-  "max_seconds": 80,
+  "max_seconds": 52,
   "numbering": "visual",
   "hashtags": [
     "一条讲透",
