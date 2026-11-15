@@ -61,7 +61,9 @@ export async function loadRepo() {
   try { palettes = JSON.parse((await getFile("tools/palettes.json", head)).text || "{}"); } catch {}
   let voices = ["女声", "男声"];
   try { voices = (await api(`contents/tools/voices?ref=${head}`)).filter((x) => x.type === "dir").map((x) => x.name); } catch {}
-  return { private: repo.private, name: repo.full_name, def, head, cfg: { ...cfg, json: JSON.parse(cfg.text) }, channels: channels.filter(Boolean), palettes, voices };
+  let music = [];
+  try { music = (await api(`contents/assets/music?ref=${head}`)).filter((x) => x.type === "file" && /\.(mp3|wav|m4a|ogg|flac)$/i.test(x.name)).map((x) => x.name); } catch {}
+  return { private: repo.private, name: repo.full_name, def, head, cfg: { ...cfg, json: JSON.parse(cfg.text) }, channels: channels.filter(Boolean), palettes, voices, music };
 }
 
 // 写入：files = [{path, text | base64 | delete:true, sha}]（sha 是读取时的版本，用来发现冲突；新文件 sha 为 null）

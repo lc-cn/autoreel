@@ -93,10 +93,26 @@ def render(data, w, h, color_of, S=None):
         sub = f"这一天的 {len(items)} 件大事 · {S['slogan']}"
     else:
         sub = f"今日 {len(items)} {S.get('hook_unit', '条')} · {S['slogan']}"
-    d.text((pad, y), sub, font=_f(int(big * 0.36)), fill=(238, 241, 255))
-    y += int(big * 0.36) + int(h * 0.04)
+    hook_txt = re.sub(r"\{([^{}|]+)\|[^{}]*\}", r"\1", str(data.get("hook") or "")).strip()
+    if hook_txt:  # 有钩子句：封面上方放大字钩子（重点词黄色），在主页格子里一眼看出讲什么
+        lines = [x for x in hook_txt.split("|") if x] if "|" in hook_txt else _split_hook(hook_txt)
+        plain = [re.sub(r"\*\*", "", x) for x in lines]
+        hf = _f(max(int(big * 0.55), min(int(big * 1.05), int((w - 2 * pad) / max(len(x) for x in plain)))))
+        for ln in lines:
+            x, on = pad, False
+            for part in re.split(r"(\*\*)", ln):
+                if part == "**":
+                    on = not on
+                    continue
+                d.text((x, y), part, font=hf, fill=(255, 216, 74) if on else "white", stroke_width=3, stroke_fill=(0, 0, 0, 160))
+                x += d.textlength(part, font=hf)
+            y += int(hf.size * 1.22)
+        y += int(h * 0.03)
+    else:
+        d.text((pad, y), sub, font=_f(int(big * 0.36)), fill=(238, 241, 255))
+        y += int(big * 0.36) + int(h * 0.04)
     # 条目列表：序号圆 + 分类色 + 标题
-    rows = items[:6]
+    rows = items[:3] if hook_txt else items[:6]
     avail = h - y - int(h * 0.07)
     row_h = min(int(avail / max(len(rows), 1)), int(h * (0.13 if landscape else 0.125)))
     y += max(0, (avail - row_h * len(rows)) // 2)  # 列表在剩余空间里垂直居中
@@ -125,6 +141,23 @@ def render(data, w, h, color_of, S=None):
     ff = _f(int(h * 0.026))
     d.text(((w - d.textlength(foot, font=ff)) / 2, h - int(h * 0.055)), foot, font=ff, fill=(238, 241, 255, 200))
     return img
+
+
+def _split_hook(t, n=10):
+    """钩子句分两行：优先在靠近中间的逗号后断开。"""
+    plain = re.sub(r"\*\*", "", t)
+    if len(plain) <= n:
+        return [t]
+    best, cnt, inside = None, 0, False
+    k = 0
+    while k < len(t):
+        if t.startswith("**", k):
+            inside = not inside; k += 2; continue
+        cnt += 1
+        if t[k] in "，、：；,;" and not inside and (best is None or abs(cnt - len(plain) / 2) < abs(best[1] - len(plain) / 2)):
+            best = (k + 1, cnt)
+        k += 1
+    return [t[:best[0]], t[best[0]:]] if best else [t]
 
 
 def b64jpeg(img):

@@ -58,6 +58,7 @@ const FIELDS = [
   { k: "voice.intro_mood", label: "开场语气", type: "mood" },
   { k: "voice.outro_mood", label: "结尾语气", type: "mood" },
   { k: "voice.voice", label: "音色", type: "voice", help: "留空跟随全局设置" },
+  { k: "voice.bgm", label: "背景音乐", type: "bgm", help: "默认按频道语气合成一段柔和的背景乐；想用自己的音乐，把 mp3 上传到仓库的 assets/music/ 文件夹后在这里选" },
   { k: "voice.speed", label: "语速倍率", type: "speed", help: "1 为默认；整期统一，不会忽快忽慢" },
 ];
 
@@ -181,6 +182,13 @@ function fieldHTML(f, c) {
       const groups = Object.keys(PN).map((pf) => [pf, acc.filter((a) => a.platform === pf)]).filter(([, l]) => l.length);
       input = `<div class="accg" id="${id}">${groups.map(([pf, l]) => `<div class="accr"><span class="badge ${pf}">${PN[pf][1]}</span><b>${PN[pf][0]}</b>
           <div class="accs">${l.map((a) => `<label class="check"><input type="checkbox" value="${esc(a.id)}" ${all || val.includes(a.id) ? "checked" : ""} /> ${esc(a.name)}</label>`).join("")}</div></div>`).join("")}</div><span class="help">${all ? "现在是默认：发往全部账号。" : ""}账号在<a href="#platforms">「发布平台」</a>里新建和管理。</span>`;
+      break;
+    }
+    case "bgm": {
+      const cur = val || "auto";
+      const opts = [["auto", "自动：按默认语气合成（没有版权问题）"], ["none", "不要背景音乐"], ...(R.music || []).map((m) => [m, `assets/music/${m}`])];
+      if (!opts.some(([k]) => k === cur)) opts.push([cur, `${cur}（仓库里找不到这个文件）`]);
+      input = `<select id="${id}">${opts.map(([k, t]) => `<option value="${esc(k)}" ${k === cur ? "selected" : ""}>${esc(t)}</option>`).join("")}</select>`;
       break;
     }
     case "numbering": {

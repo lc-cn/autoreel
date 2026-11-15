@@ -96,7 +96,7 @@ class Ctx:
         except Exception as ex:  # noqa: BLE001
             self.warnings.append(f"素材模块不可用：{ex}")
             return None
-        where = "开场" if i == "h" else f"第 {i + 1} 段"
+        where = "开场" if i == "h" else f"第 {int(str(i).split('_')[0]) + 1} 段"
         if not footage.available():
             self.warnings.append("没有 PEXELS_API_KEY / PIXABAY_API_KEY，实拍镜头改为文字镜头")
             return None
@@ -146,10 +146,22 @@ def render(i, n, it, s, e, S, ctx, split_title):
     ctx.text(it["tag"], it["title"])
     bg = ""
     if kind == "footage" or (shot.get("bg") and kind != "asset"):
-        src = ctx.footage(i, shot.get("query") or shot.get("bg"), e - s)
-        if src:
-            bg = _bg_video(i, src, s, e)
-        elif kind == "footage":
+        qs = [q for q in (shot.get("queries") or []) if q][:4]
+        if len(qs) >= 2 and e - s >= 4:  # 多组关键词：这一段里每隔几秒换一段实拍，画面不停在一个镜头上
+            part = (e - s) / len(qs)
+            tags = []
+            for k, q in enumerate(qs):
+                src_k = ctx.footage(f"{i}_{k}", q, part)
+                if src_k:
+                    a, b = s + k * part, (s + (k + 1) * part if k < len(qs) - 1 else e)
+                    tags.append(f'<video id="s{i}-bgv{k}" class="clip bgv" src="{src_k}" data-start="{T(a)}" data-duration="{T(b - a)}" data-track-index="1" muted playsinline></video>')
+            if tags:
+                bg = _bg_layer(i, s, e, "".join(tags))
+        if not bg:
+            src = ctx.footage(i, shot.get("query") or shot.get("bg") or (qs[0] if qs else None), e - s)
+            if src:
+                bg = _bg_video(i, src, s, e)
+        if not bg and kind == "footage":
             kind = "text"
     ctx.bg = None  # asset 镜头可能自己产出背景层
     try:

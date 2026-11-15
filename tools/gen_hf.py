@@ -110,7 +110,8 @@ def make_caption(data):
     default = S["src"].split("：", 1)[1] if "：" in S["src"] else "公开资料"
     out.append(f"📌 {kind}：" + ("、".join(srcs) if srcs else default) + "（据公开资料整理）")
     if data.get("ask"):
-        out.append(f"💬 {tts.display_text(data['ask'])}")
+        o = ask_options(data)
+        out.append(f"💬 {tts.display_text(data['ask'])}" + (f" 评论区打 A（{o[0]}）或 B（{o[1]}）" if o else ""))
     tags = (data.get("hashtags") or S["hashtags"] + categories(items))[:5]
     out.append(" ".join("#" + t.lstrip("#") for t in tags))
     return "\n".join(out)
@@ -120,7 +121,7 @@ FONT_SRC = "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc"
 E = html.escape
 
 
-def phrases(text, t0, t1):
+def phrases(text, t0, t1, keep=()):
     """把一句口播按标点切成短语，按字数分配时间（中文无词边界）。"""
     parts = [p for p in re.split(r"(?<=[，。；！？、])", text) if p.strip()]
     merged = []
@@ -135,7 +136,8 @@ def phrases(text, t0, t1):
             final.append(p); continue
         import rjieba, math
         words = []  # 日期、带单位的数字整体保留，其余用分词切
-        NUMX = r"(?:\d{4}年)?\d{1,2}月\d{1,2}[日号]|\d{4}年(?:\d{1,2}月)?|\d{1,2}[:：]\d{2}|[\d.,]+[%％]?[万亿千百]*[个月日号年点时分秒天倍元]?"
+        NUMX = "".join(re.escape(w) + "|" for w in sorted(keep, key=len, reverse=True) if w) + \
+            r"\d+比\d+|(?:\d{4}年)?\d{1,2}月\d{1,2}[日号]|\d{4}年(?:\d{1,2}月)?|\d{1,2}[:：]\d{2}|[\d.,]+[%％]?[万亿千百]*[个月日号年点时分秒天倍元种]?"
         pos = 0
         for m in re.finditer(NUMX, p):
             words += list(rjieba.cut(p[pos:m.start()])) if m.start() > pos else []
@@ -181,6 +183,21 @@ def split_title(t, n=8):
     ok = [k for k in range(2, len(t) - 1) if not (re.match(r"[0-9A-Za-z.%]", t[k - 1]) and re.match(r"[0-9A-Za-z.%]", t[k]))]
     k = min(ok, key=lambda k: abs(k - mid)) if ok else int(mid)
     return [t[:k], t[k:]]
+
+
+def ask_options(data):
+    o = [str(x).strip() for x in (data.get("ask_options") or []) if str(x).strip()]
+    return o[:2] if len(o) >= 2 else []
+
+
+def ask_html(data, follow_top):
+    """结尾的互动问题；有二选一选项时显示 A / B 两个大按钮，方便观众直接评论「A」「B」。"""
+    if not data.get("ask"):
+        return ""
+    opts = ask_options(data)
+    btns = "".join(f'<span class="opt o{k}"><b>{"AB"[k]}</b>{E(x)}</span>' for k, x in enumerate(opts))
+    return (f'<div id="ask" style="top:{follow_top + 140}px">💬 {E(tts.display_text(data["ask"]))}'
+            + (f'<div class="opts">{btns}</div><div class="hint">评论区打 A 或 B</div>' if opts else "") + "</div>")
 
 
 def hook_lines(t, n=10):
@@ -267,7 +284,7 @@ def build(data, times, dur, proj, spoken):
     scenes, bgs, js, kinds = [], [], [], []
     if hookline:  # 开场垫实拍：稿子写了 hook_bg 就用它，否则借用第一个实拍镜头的关键词
         sh = [(it.get("shot") or {}) for it in items]
-        hq = data.get("hook_bg") or next((x.get("query") or x.get("bg") for x in sh if x.get("type") == "footage" or x.get("bg")), None)
+        hq = data.get("hook_bg") or next((x.get("query") or x.get("bg") or (x.get("queries") or [None])[0] for x in sh if x.get("type") == "footage" or x.get("bg")), None)
         hb, hj = SC.hook_bg(ctx, hq, 0, hook_end)
         if hb:
             bgs.append(hb); js.extend(hj)
@@ -283,6 +300,15 @@ def build(data, times, dur, proj, spoken):
     if not sents or max(x[0] for x in sents) != len(times) - 1:  # 没有逐句时间时，按整段平均分配
         sents = [(li, tts.display_text(spoken[li]), a, b) for li, (a, b) in enumerate(times)]
     pieces = []
+    # 关键词：稿子里用 **…** 标出的词，字幕里高亮放大，出现时配一声轻提示音
+    bold = [set(re.findall(r"\*\*(.+?)\*\*", re.sub(r"\{([^{}|]+)\|[^{}]*\}", r"\1", x))) for x in spoken]
+    events = [(max(0.0, st - 0.12), "whoosh-short") for st in starts]  # 每段开头一声转场
+    first = {}
+    for li, txt, a, b in sents:
+        first.setdefault(li, a)
+        if 1 <= li <= n and a - first[li] > 0.5:  # 同一段里每句换一次镜头感：轻推近
+            js.append(f'tl.fromTo("#scene{li - 1}", {{scale: 1.03}}, {{scale: 1, duration: 0.35, ease: "power2.out"}}, {T(a)});')
+    popped = set()
     for li, txt, a, b in sents:
         if li == len(times) - 1:  # 结尾页已有"关注我"，不再加字幕
             continue
@@ -291,13 +317,26 @@ def build(data, times, dur, proj, spoken):
         if SC.numbering(S) == "spoken":  # 配音念的「一，」不上字幕，画面上已有序号
             txt = re.sub(r"^[一二三四五六七八九十]，", "", txt)
         if txt.strip():
-            pieces.extend(phrases(txt, a, b + 0.08))
-    for j, (p, s, e) in enumerate(pieces):
+            pieces.extend((p, ps, pe, li) for p, ps, pe in phrases(txt, a, b + 0.08, bold[li]))
+    for j, (p, s, e, li) in enumerate(pieces):
         if j + 1 < len(pieces):
             e = min(e, pieces[j + 1][1])
-        caps.append(f'<div class="clip cap" id="cap{k}" data-start="{T(s)}" data-duration="{T(e - s)}" data-track-index="5"><span>{E(p)}</span></div>')
+        html_p, hit = E(p), False
+        for w in sorted(bold[li], key=len, reverse=True):
+            if w and E(w) in html_p:
+                html_p, hit = html_p.replace(E(w), f"<em>{E(w)}</em>", 1), True
+        caps.append(f'<div class="clip cap" id="cap{k}" data-start="{T(s)}" data-duration="{T(e - s)}" data-track-index="5"><span>{html_p}</span></div>')
         js.append(f'tl.fromTo("#cap{k} span", {{y: 16, opacity: 0}}, {{y: 0, opacity: 1, duration: 0.12, ease: "power2.out"}}, {T(s)});')
+        if hit:
+            js.append(f'tl.fromTo("#cap{k} em", {{scale: 1.35}}, {{scale: 1, duration: 0.3, ease: "back.out(3)"}}, {T(s)});')
+            if li not in popped:  # 每段最多一声
+                events.append((s, "pop")); popped.add(li)
         k += 1
+    if data.get("ask"):
+        events.append((out_start + 0.3, "chime"))
+        if ask_options(data):
+            js.append(f'tl.fromTo("#ask .opt", {{scale: 0.6, opacity: 0}}, {{scale: 1, opacity: 1, duration: 0.35, ease: "back.out(2)", stagger: 0.12}}, {T(out_start + 0.6)});')
+    build.events = events
 
     recap = "".join(f'<div class="rc c{i}" id="rc{i}"><span class="rtag">{E(it["tag"])}</span>{E(it["title"].replace("|", ""))}</div>' for i, it in enumerate(items))
     js.append(f'''
@@ -305,7 +344,7 @@ def build(data, times, dur, proj, spoken):
       tl.fromTo("#follow", {{scale: 0.6, opacity: 0}}, {{scale: 1, opacity: 1, duration: 0.45, ease: "back.out(2.2)"}}, {T(out_start + 0.5)});''')
 
     progress = "".join(f'<div class="pgs c{i}"><div class="pgf" id="pg{i}"></div></div>' for i in range(n))
-    all_text = data["date"] + tts.display_text(data["intro"]) + tts.display_text(data["outro"]) + "💬" + "".join(it["tag"] + it["title"] + tts.display_text(it["say"]) for it in items) + "内容由AI生成热点快报今日大热点关注我每天一分钟看懂天下事信息来源公开报道本期涉及条一二三四五六七八九十月日这" + "".join(S[k] for k in ("name", "slogan", "label", "src")) + data.get("topic", "") + "".join(ctx.chars) + "单位："
+    all_text = data["date"] + tts.display_text(data["intro"]) + tts.display_text(data["outro"]) + "💬评论区打A或B" + "".join(ask_options(data)) + "".join(it["tag"] + it["title"] + tts.display_text(it["say"]) for it in items) + "内容由AI生成热点快报今日大热点关注我每天一分钟看懂天下事信息来源公开报道本期涉及条一二三四五六七八九十月日这" + "".join(S[k] for k in ("name", "slogan", "label", "src")) + data.get("topic", "") + "".join(ctx.chars) + "单位："
     os.makedirs(f"{proj}/assets/fonts", exist_ok=True)
     subset_font("".join(sorted(set(all_text))), f"{proj}/assets/fonts/zh.woff2")
     shutil.copy(GSAP, f"{proj}/assets/gsap.min.js")
@@ -355,6 +394,11 @@ def build(data, times, dur, proj, spoken):
       #hook .big.hookline em {{ -webkit-text-stroke: 0; }}
       #hook .big.hookline + .cover {{ margin-top: 30px; }}
       #hook .big.hookline ~ .agenda {{ margin-top: 30px; transform: scale(0.86); transform-origin: left top; }}
+      #ask .opts {{ display: flex; gap: 18px; margin-top: 18px; }}
+      #ask .opt {{ flex: 1; display: flex; align-items: center; gap: 14px; font-size: 44px; padding: 14px 20px; border-radius: 18px; background: rgba(255,255,255,0.16); }}
+      #ask .opt b {{ width: 58px; height: 58px; border-radius: 50%; display: grid; place-items: center; background: #ffd84a; color: #1a1a2e; font-size: 38px; flex: none; }}
+      #ask .opt.o1 b {{ background: #5ee0ff; }}
+      #ask .hint {{ font-size: 30px; color: rgba(255,255,255,0.75); margin-top: 12px; font-weight: 600; }}
       #ask {{ position: absolute; left: 80px; right: 180px; font-size: 46px; font-weight: 800; color: #fff; line-height: 1.3;
               background: rgba(0,0,0,0.28); border-radius: 22px; padding: 22px 28px; }}
       .chip {{ font-size: 32px; padding: 8px 20px; border-radius: 999px; background: var(--c); color: #0a0a18; font-weight: 700; }}
@@ -371,9 +415,10 @@ def build(data, times, dur, proj, spoken):
       #progress {{ position: absolute; left: 80px; right: 180px; top: 1340px; display: flex; gap: 14px; }}
       .pgs {{ flex: 1; height: 10px; border-radius: 5px; background: rgba(255,255,255,0.14); overflow: hidden; }}
       .pgf {{ width: 100%; height: 100%; background: var(--c); transform-origin: left center; transform: scaleX(0); }}
-      .cap {{ position: absolute; left: 50px; right: 170px; top: 1470px; text-align: center; overflow: visible; }}
-      .cap span {{ display: inline-block; font-size: 54px; font-weight: 700; color: #ffe678; padding: 14px 34px; border-radius: 22px;
-                  background: rgba(0,0,0,0.38); -webkit-text-stroke: 1px #ffe678; }}
+      .cap {{ position: absolute; left: 40px; right: 160px; top: 1430px; text-align: center; overflow: visible; }}
+      .cap span {{ display: inline-block; font-size: 64px; font-weight: 800; color: #ffffff; padding: 6px 14px; line-height: 1.25;
+                  -webkit-text-stroke: 2px rgba(0,0,0,0.85); paint-order: stroke fill; text-shadow: 0 4px 14px rgba(0,0,0,0.6); }}
+      .cap em {{ display: inline-block; font-style: normal; color: #ffd84a; transform-origin: center bottom; }}
       #outro {{ position: absolute; inset: 0; }}
       #recap {{ position: absolute; left: 80px; right: 180px; top: 580px; display: flex; flex-direction: column; gap: 26px; }}
       .rc {{ font-size: 48px; font-weight: 700; display: flex; align-items: center; gap: 24px; padding: 22px 28px; border-radius: 22px;
@@ -410,7 +455,7 @@ def build(data, times, dur, proj, spoken):
       <div id="src" class="clip" data-start="{T(starts[0])}" data-duration="{T(out_start - starts[0])}" data-track-index="3">{S["src"]}</div>
       <div id="outro" class="clip" data-start="{T(out_start)}" data-duration="{T(dur - out_start)}" data-track-index="2">
         <div id="recap">{recap}</div>
-        {f'<div id="ask" style="top:{follow_top + 140}px">💬 {E(tts.display_text(data["ask"]))}</div>' if data.get("ask") else ""}
+        {ask_html(data, follow_top)}
         <div id="follow" style="top:{follow_top}px">关注我 · {E(follow_text(S))}</div>
       </div>
       {"".join(caps)}
@@ -448,7 +493,9 @@ def main():
     data["intro"] = data.get("intro") or (data["hook"] if data.get("hook") else auto_intro(data))
     if data.get("ask") and "outro" not in data:  # 结尾：先抛互动问题，再请关注
         ask = data["ask"].strip()
-        data["outro"] = f"{ask}{'' if ask[-1:] in '？?。！!' else '。'}关注我，{follow_text(S)}。"
+        opts = [str(x).strip() for x in (data.get("ask_options") or [])][:2]
+        pick = f"{opts[0]}的打A，{opts[1]}的打B。" if len(opts) == 2 else ""
+        data["outro"] = f"{ask}{'' if ask[-1:] in '？?。！!' else '。'}{pick}关注我，{follow_text(S)}。"
     data.setdefault("outro", S["outro"])
     vs = S.get("voice") or {}  # 频道的配音语气：mood 默认语气，intro_mood / outro_mood 开场和结尾
     lines = ([{"text": data["intro"], "mood": data.get("intro_mood") or vs.get("intro_mood", "轻快")}]
@@ -468,6 +515,15 @@ def main():
     os.makedirs(f"{proj}/assets", exist_ok=True)
     sf.write(f"{proj}/assets/voice.wav", audio, sr)
     build(data, times, dur, proj, lines)
+    # 混音：背景音乐（人声出现时自动压低）+ 转场和关键词音效
+    try:
+        import mix as MX
+        bg = MX.background(vs.get("bgm", VOICE.get("bgm", "auto")), vs.get("mood", "平稳"), len(audio) / sr, sr, ROOT)
+        mixed = MX.mix(audio, sr, getattr(build, "events", []), bg)
+        sf.write(f"{proj}/assets/voice.wav", tts._master(mixed), sr)
+        print(f"混音：背景音乐{'（' + str(vs.get('bgm', 'auto')) + '）' if bg is not None else '无'}，音效 {len(getattr(build, 'events', []))} 处")
+    except Exception as e:  # 混音出问题就用纯配音，不影响出片
+        print(f"提醒：混音失败，用纯配音（{e}）")
     if not os.path.exists(f"{proj}/hyperframes.json"):
         json.dump({"name": "autoreel"}, open(f"{proj}/hyperframes.json", "w"))
     cap = make_caption(data)
