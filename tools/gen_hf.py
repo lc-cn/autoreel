@@ -109,6 +109,8 @@ def make_caption(data):
     kind = S["src"].split("：")[0] if "：" in S["src"] else "信息来源"
     default = S["src"].split("：", 1)[1] if "：" in S["src"] else "公开资料"
     out.append(f"📌 {kind}：" + ("、".join(srcs) if srcs else default) + "（据公开资料整理）")
+    if data.get("ask"):
+        out.append(f"💬 {tts.display_text(data['ask'])}")
     tags = (data.get("hashtags") or S["hashtags"] + categories(items))[:5]
     out.append(" ".join("#" + t.lstrip("#") for t in tags))
     return "\n".join(out)
@@ -181,6 +183,40 @@ def split_title(t, n=8):
     return [t[:k], t[k:]]
 
 
+def hook_lines(t, n=10):
+    """钩子句断行：用 | 指定；否则不超过 n 字一行，优先在中间附近的逗号、顿号后面断，重点（**…**）不拆开。"""
+    if "|" in t:
+        return [x for x in t.split("|") if x][:3]
+    plain = re.sub(r"\*\*", "", t)
+    if len(plain) <= n:
+        return [t]
+    # 在原文（含 ** 标记）里找断点：标点后面，且不在 ** 里面
+    cands, inside, cnt = [], False, 0
+    k = 0
+    while k < len(t):
+        if t.startswith("**", k):
+            inside = not inside; k += 2; continue
+        cnt += 1
+        if t[k] in "，、：；,;" and not inside:
+            cands.append((k + 1, cnt))
+        k += 1
+    mid = len(plain) / 2
+    good = [c for c in cands if abs(c[1] - mid) <= max(3, len(plain) / 4) and c[1] <= n + 2 and len(plain) - c[1] <= n + 2]
+    if good:
+        pos = min(good, key=lambda c: abs(c[1] - mid))[0]
+        return [t[:pos], t[pos:]]
+    if "**" in t:
+        return [t]
+    import rjieba
+    bounds, acc = [], 0
+    for w in rjieba.cut(plain):
+        acc += len(w)
+        bounds.append(acc)
+    ok = [b for b in bounds[:-1] if b <= n + 1 and len(plain) - b <= n + 1] or bounds[:-1] or [int(mid)]
+    k = min(ok, key=lambda b: abs(b - mid))
+    return [plain[:k], plain[k:]]
+
+
 def subset_font(chars, out):
     from fontTools.ttLib import TTCollection
     from fontTools import subset
@@ -197,7 +233,14 @@ def build(data, times, dur, proj, spoken):
     S = series(data)
     m = re.search(r"(\d+)月(\d+)日", data["date"])
     hook = S.get("hook", "count")
-    if hook == "topic":
+    hookline = tts.display_text(data.get("hook") or "").strip()
+    if hookline:  # 稿子写了钩子句：开场第一屏就是这句话（大字），2 秒内抓住人
+        raw = re.sub(r"\{([^{}|]+)\|[^{}]*\}", r"\1", data["hook"])
+        hl = hook_lines(raw)
+        longest = max(len(re.sub(r"\*\*", "", x)) for x in hl)
+        hook_fs = max(60, min(96, int(800 / max(1, longest))))  # 按最长一行定字号，保证不再自动折行
+        hook_big = "<br />".join(re.sub(r"\*\*(.+?)\*\*", r"<em>\1</em>", E(x)) for x in hl)
+    elif hook == "topic":
         hook_big = f"<em>{E(data.get('topic', S['name']))[:6]}</em>"
     elif hook == "date":
         hook_big = f"<em>{int(m.group(1))}月{int(m.group(2))}日</em>" if m else "<em>这一天</em>"
@@ -237,7 +280,12 @@ def build(data, times, dur, proj, spoken):
     for li, txt, a, b in sents:
         if li == len(times) - 1:  # 结尾页已有"关注我"，不再加字幕
             continue
-        pieces.extend(phrases(txt, a, b + 0.08))
+        if li == 0 and hookline:  # 开场的钩子句已经是大字，不再重复字幕
+            continue
+        if SC.numbering(S) == "spoken":  # 配音念的「一，」不上字幕，画面上已有序号
+            txt = re.sub(r"^[一二三四五六七八九十]，", "", txt)
+        if txt.strip():
+            pieces.extend(phrases(txt, a, b + 0.08))
     for j, (p, s, e) in enumerate(pieces):
         if j + 1 < len(pieces):
             e = min(e, pieces[j + 1][1])
@@ -251,7 +299,7 @@ def build(data, times, dur, proj, spoken):
       tl.fromTo("#follow", {{scale: 0.6, opacity: 0}}, {{scale: 1, opacity: 1, duration: 0.45, ease: "back.out(2.2)"}}, {T(out_start + 0.5)});''')
 
     progress = "".join(f'<div class="pgs c{i}"><div class="pgf" id="pg{i}"></div></div>' for i in range(n))
-    all_text = data["date"] + data["intro"] + data["outro"] + "".join(it["tag"] + it["title"] + tts.display_text(it["say"]) for it in items) + "内容由AI生成热点快报今日大热点关注我每天一分钟看懂天下事信息来源公开报道本期涉及条一二三四五六七八九十月日这" + "".join(S[k] for k in ("name", "slogan", "label", "src")) + data.get("topic", "") + "".join(ctx.chars) + "单位："
+    all_text = data["date"] + tts.display_text(data["intro"]) + tts.display_text(data["outro"]) + "💬" + "".join(it["tag"] + it["title"] + tts.display_text(it["say"]) for it in items) + "内容由AI生成热点快报今日大热点关注我每天一分钟看懂天下事信息来源公开报道本期涉及条一二三四五六七八九十月日这" + "".join(S[k] for k in ("name", "slogan", "label", "src")) + data.get("topic", "") + "".join(ctx.chars) + "单位："
     os.makedirs(f"{proj}/assets/fonts", exist_ok=True)
     subset_font("".join(sorted(set(all_text))), f"{proj}/assets/fonts/zh.woff2")
     shutil.copy(GSAP, f"{proj}/assets/gsap.min.js")
@@ -297,6 +345,12 @@ def build(data, times, dur, proj, spoken):
                   text-align: center; line-height: 62px; font-size: 40px; font-weight: 900; }}
       #hook .big em {{ font-style: normal; color: #ffd84a; -webkit-text-stroke: 3px #ffd84a; }}
       #hook .chips {{ display: none; }}
+      #hook .big.hookline {{ font-size: 86px; line-height: 1.22; white-space: nowrap; -webkit-text-stroke: 0; text-shadow: 0 4px 18px rgba(0,0,0,0.45); max-width: 900px; }}
+      #hook .big.hookline em {{ -webkit-text-stroke: 0; }}
+      #hook .big.hookline + .cover {{ margin-top: 30px; }}
+      #hook .big.hookline ~ .agenda {{ margin-top: 30px; transform: scale(0.86); transform-origin: left top; }}
+      #ask {{ position: absolute; left: 80px; right: 180px; font-size: 46px; font-weight: 800; color: #fff; line-height: 1.3;
+              background: rgba(0,0,0,0.28); border-radius: 22px; padding: 22px 28px; }}
       .chip {{ font-size: 32px; padding: 8px 20px; border-radius: 999px; background: var(--c); color: #0a0a18; font-weight: 700; }}
       .scene {{ position: absolute; inset: 0; }}
       .ghost {{ position: absolute; right: 50px; top: 470px; font-size: 420px; font-weight: 900; line-height: 1; color: transparent;
@@ -341,7 +395,7 @@ def build(data, times, dur, proj, spoken):
         <div class="mark"></div><div><h1>{S["name"]}</h1><div class="date">{E(data["date"])} · {E(S["slogan"])}</div></div>
       </div>
       <div id="hook" class="clip" data-start="0" data-duration="{T(hook_end)}" data-track-index="2">
-        <div class="big" id="hook-big">{hook_big}</div>
+        <div class="big{" hookline" if hookline else ""}" id="hook-big"{f' style="font-size:{hook_fs}px"' if hookline else ""}>{hook_big}</div>
         <div class="cover"><span class="lab">{S["label"]}</span>{chips}</div>
         <ol class="agenda">{agenda}</ol>
       </div>
@@ -350,6 +404,7 @@ def build(data, times, dur, proj, spoken):
       <div id="src" class="clip" data-start="{T(starts[0])}" data-duration="{T(out_start - starts[0])}" data-track-index="3">{S["src"]}</div>
       <div id="outro" class="clip" data-start="{T(out_start)}" data-duration="{T(dur - out_start)}" data-track-index="2">
         <div id="recap">{recap}</div>
+        {f'<div id="ask" style="top:{follow_top + 140}px">💬 {E(tts.display_text(data["ask"]))}</div>' if data.get("ask") else ""}
         <div id="follow" style="top:{follow_top}px">关注我 · {E(follow_text(S))}</div>
       </div>
       {"".join(caps)}
@@ -365,6 +420,7 @@ def build(data, times, dur, proj, spoken):
       tl.fromTo("#deco", {{x: 0}}, {{x: -120, duration: {T(dur)}, ease: "none"}}, 0);
       tl.fromTo("#grid", {{y: 0}}, {{y: -180, duration: {T(dur)}, ease: "none"}}, 0);
       tl.fromTo("#hook-big", {{scale: 1}}, {{scale: 1.06, duration: {T(hook_end)}, ease: "none"}}, 0);
+      tl.fromTo("#hook .agenda", {{opacity: 0.0}}, {{opacity: 1, duration: 0.35, ease: "power2.out"}}, {"0.5" if hookline else "0"});
       tl.fromTo("#hook .chip", {{y: 0}}, {{y: -10, duration: 0.3, ease: "sine.inOut", stagger: 0.12, yoyo: true, repeat: 1}}, 0.2);
       tl.fromTo("#hook .ag .num", {{scale: 1}}, {{scale: 1.18, duration: 0.18, ease: "power2.out", stagger: 0.25, yoyo: true, repeat: 1}}, 0.6);
       tl.to("#hook", {{opacity: 0, y: -60, duration: 0.2, ease: "power2.in"}}, {T(hook_end - 0.2)});
@@ -382,7 +438,11 @@ def main():
     data = json.load(open(src, encoding="utf-8"))
     S = series(data)
     target = float(S.get("max_seconds", 90)) + 10  # 正常语速读完即可；超出上限时由写稿环节删短
-    data["intro"] = data.get("intro") or auto_intro(data)
+    # 开场：有钩子句就直接念钩子（频道名和日期只在画面顶部显示），没有才用频道的开场白模板
+    data["intro"] = data.get("intro") or (data["hook"] if data.get("hook") else auto_intro(data))
+    if data.get("ask") and "outro" not in data:  # 结尾：先抛互动问题，再请关注
+        ask = data["ask"].strip()
+        data["outro"] = f"{ask}{'' if ask[-1:] in '？?。！!' else '。'}关注我，{follow_text(S)}。"
     data.setdefault("outro", S["outro"])
     vs = S.get("voice") or {}  # 频道的配音语气：mood 默认语气，intro_mood / outro_mood 开场和结尾
     lines = ([{"text": data["intro"], "mood": data.get("intro_mood") or vs.get("intro_mood", "轻快")}]

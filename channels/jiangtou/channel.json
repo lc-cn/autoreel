@@ -8,7 +8,7 @@
   "deco": "DEEP<br />DIVE",
   "src": "信息来源：公开报道",
   "hook": "topic",
-  "intro": "{name}，{date}。今天讲讲{topic_say}，分{n}点说清楚。",
+  "intro": "{name}，{date}。今天讲讲{topic_say}。",
   "outro": "这就是今天的一条讲透。关注我，每天把一条新闻讲明白。",
   "items": [
     3,
@@ -23,7 +23,7 @@
     260
   ],
   "max_seconds": 80,
-  "numbering": "spoken",
+  "numbering": "visual",
   "hashtags": [
     "一条讲透",
     "新闻解读"

@@ -258,7 +258,7 @@ def _cosy_jobs(jobs, v):
     else:
         pw, pt = _cosy_prompt(c)
         for j in jobs:
-            ins = MOODS.get(j.get("mood") or "平稳", MOODS["平稳"])[0] if c.get("emotion", True) else ""
+            ins = "" if j.get("noins") else MOODS.get(j.get("mood") or "平稳", MOODS["平稳"])[0] if c.get("emotion", True) else ""
             lines.append({"text": j["text"], "prompt_wav": pw, "prompt_text": pt, "instruct": ins, "speed": j["speed"], "seed": j["seed"]})
     with tempfile.TemporaryDirectory() as d:
         jf = os.path.join(d, "job.json")
@@ -383,17 +383,28 @@ def _run(provider, jobs, voice):
     return [_squeeze(_trim(a)) for a in ENGINES[provider](jobs, voice)]
 
 
+def _qc_bad(r):
+    return bool(r) and (r["cer"] > QC_RETRY or r.get("extra_bad"))
+
+
+def _qc_score(r):
+    return (1 if r.get("extra_bad") else 0, r["cer"])
+
+
 def _qc_pass(provider, jobs, segs, voice, qc, log):
-    """清晰度检查：错得多的段落换随机种子重做，留字错率最低的一版。"""
+    """清晰度检查：没念清楚、或者多出了稿子里没有的话（模型把语气指令当成对话回了「好的」之类），就换随机种子重做；
+    最后一次去掉语气指令重做。留下多余话最少、字错率最低的一版。"""
     if qc is None:
         return [None] * len(jobs)
     res = [qc.check(a, j["say"], SR) for a, j in zip(segs, jobs)]
     for attempt in range(1, QC_TRIES):
-        bad = [k for k, r in enumerate(res) if r and r["cer"] > QC_RETRY]
+        bad = [k for k, r in enumerate(res) if _qc_bad(r)]
         if not bad:
             break
-        log(f"清晰度：{len(bad)} 段没念清楚，第 {attempt} 次重做")
-        redo = [{**jobs[k], "seed": jobs[k]["seed"] + 1000 * attempt} for k in bad]
+        last = attempt == QC_TRIES - 1
+        extra = [k for k in bad if res[k].get("extra_bad")]
+        log(f"清晰度：{len(bad)} 段要重做（{len(extra)} 段多出了稿子里没有的话），第 {attempt} 次{'，这次不用语气指令' if last else ''}")
+        redo = [{**jobs[k], "seed": jobs[k]["seed"] + 1000 * attempt, **({"mood": "平稳", "noins": True} if last else {})} for k in bad]
         try:
             new = _run(provider, redo, voice)
         except Exception as e:
@@ -401,7 +412,7 @@ def _qc_pass(provider, jobs, segs, voice, qc, log):
             break
         for k, a in zip(bad, new):
             r = qc.check(a, jobs[k]["say"], SR)
-            if r["cer"] < res[k]["cer"]:
+            if _qc_score(r) < _qc_score(res[k]):
                 segs[k], res[k] = a, r
     return res
 
@@ -421,8 +432,10 @@ def synth(lines, voice, target=90, min_speed=1.0, max_speed=MAX_SPEED):
         base = float((voice.get(p) or {}).get("speed", BASE_SPEED.get(p, 1.0))) if p != "sherpa" else 1.0
         return base * factor
 
+    salt = int.from_bytes(os.urandom(2), "little")  # 每次运行换一组随机种子：重新运行能得到不同的结果
+
     def attempt(p, extra):
-        jobs = _jobs(lines, p, base_speed(p) * extra)
+        jobs = _jobs(lines, p, base_speed(p) * extra, seed=salt)
         return jobs, _run(p, jobs, voice)
 
     try:
@@ -472,14 +485,17 @@ def synth(lines, voice, target=90, min_speed=1.0, max_speed=MAX_SPEED):
     report = {"provider": provider, "speed": round(speed, 3), "chunks": len(jobs), "checked": len(checked)}
     if checked:
         report["cer"] = round(float(np.mean([r["cer"] for _, r in checked])), 3)
-        report["unclear"] = [{"line": j["line"], "text": r["diff"], "heard": r["heard"], "cer": r["cer"]}
-                             for j, r in checked if r["cer"] > QC_RETRY]
+        report["unclear"] = [{"line": j["line"], "text": r["diff"], "heard": r["heard"], "cer": r["cer"], "extra": r.get("extra", "")}
+                             for j, r in checked if _qc_bad(r)]
     synth.last = {"sents": sents, "report": report}
     msg = f"配音：{provider}，{len(jobs)} 段，语速 x{speed:.2f}"
     if checked:
         msg += f"，清晰度检查平均字错率 {report['cer'] * 100:.1f}%"
         for u in report["unclear"]:
-            msg += f"\n提醒：第 {u['line'] + 1} 段可能没念清楚（〔〕处）：{u['text']}  识别成「{u['heard']}」"
+            if u.get("extra") and u["cer"] <= QC_RETRY:
+                msg += f"\n提醒：第 {u['line'] + 1} 段配音里多出了「{u['extra']}」，稿子里没有；识别成「{u['heard']}」"
+            else:
+                msg += f"\n提醒：第 {u['line'] + 1} 段可能没念清楚（〔〕处）：{u['text']}  识别成「{u['heard']}」"
     elif qc is None:
         msg += "（没有识别模型，跳过清晰度检查）"
     log(msg)

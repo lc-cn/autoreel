@@ -82,6 +82,9 @@ def main():
         raise SystemExit(f"稿子里的 channel 是 {data.get('channel')}，和命令里的 {a.channel} 不一致")
     data["channel"] = a.channel
     D = a.date or date_of(data)
+    early = []
+    if not str(data.get("hook", "")).strip():
+        early.append("缺少 hook（钩子句）：开场第一句要直接抛出最抓人的内容，观众 2 秒内就决定划不划走，写法见 autoreel 技能")
     W = a.work or f"/tmp/autoreel-work/{a.channel}-{D}"
     os.makedirs(W, exist_ok=True)
     json.dump(data, open(os.path.join(W, "script.json"), "w"), ensure_ascii=False, indent=1)
@@ -101,6 +104,11 @@ def main():
                 print(f"通知 {n}：{r}")
         sys.exit(code)
 
+    if early:
+        res["problems"] += early
+        finish(2)
+    if not str(data.get("ask", "")).strip():
+        res["warnings"].append("没有 ask（互动问题）：结尾只请关注，评论会少")
     try:
         # 1. 配音 + 画面工程 + 文案 + 发布信息
         proj = os.path.join(W, "proj")
@@ -111,7 +119,7 @@ def main():
         print("\n".join(l for l in log.splitlines() if re.match(r"(配音|分镜|提醒|工程|抖音文案|清晰度)", l.strip())))
         for l in log.splitlines():
             if l.startswith("提醒："):
-                (res["problems"] if ("没念清楚" in l or "请把 say 删短" in l) else res["warnings"]).append(l[3:])
+                (res["problems"] if ("没念清楚" in l or "请把 say 删短" in l or "多出了" in l) else res["warnings"]).append(l[3:])
         rep = os.path.join(W, "配音检查.json")
         if os.path.exists(rep):
             res["voice"] = json.load(open(rep, encoding="utf-8"))

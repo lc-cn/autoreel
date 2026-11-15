@@ -31,6 +31,33 @@ def _syllables(text):
     return chars, lazy_pinyin("".join(chars))
 
 
+def _extra(a, b):
+    """b（听到的）比 a（原稿）多出来的音节：返回 (段首多出的个数, 段尾多出的个数, 中间最长的连续多出个数, 多出的位置)。"""
+    n, m = len(a), len(b)
+    d = np.zeros((n + 1, m + 1), dtype=np.int32)
+    d[:, 0] = np.arange(n + 1)
+    d[0, :] = np.arange(m + 1)
+    for i in range(1, n + 1):
+        for j in range(1, m + 1):
+            d[i, j] = min(d[i - 1, j] + 1, d[i, j - 1] + 1, d[i - 1, j - 1] + (a[i - 1] != b[j - 1]))
+    ins, i, j = [], n, m
+    while i > 0 or j > 0:
+        if i > 0 and j > 0 and d[i, j] == d[i - 1, j - 1] + (a[i - 1] != b[j - 1]):
+            i, j = i - 1, j - 1
+        elif j > 0 and (i == 0 or d[i, j] == d[i, j - 1] + 1):
+            ins.append(j - 1); j -= 1
+        else:
+            i -= 1
+    ins = sorted(ins)
+    head = sum(1 for k, x in enumerate(ins) if x == k)
+    tail = sum(1 for k, x in enumerate(reversed(ins)) if x == m - 1 - k)
+    run = best = 0
+    for k, x in enumerate(ins):
+        run = run + 1 if k and x == ins[k - 1] + 1 else 1
+        best = max(best, run)
+    return head, tail, best, ins
+
+
 def _edit_ops(a, b):
     """Levenshtein，返回 (距离, 对齐后 a 中出错位置的集合)。"""
     n, m = len(a), len(b)
@@ -82,7 +109,12 @@ class Checker:
         _, got = _syllables(got_text)
         dist, bad = _edit_ops(want, got)
         diff = "".join(f"〔{c}〕" if k in bad else c for k, c in enumerate(chars))
-        return {"cer": round(dist / len(want), 3), "heard": got_text, "diff": diff}
+        # 多出来的话（比如模型把语气指令当成对话，回了句「好的」「嗯」）：段首段尾多一个字、中间连续多两个字就算不合格
+        head, tail, run, ins = _extra(want, got)
+        got_chars = _CN.findall(got_text)
+        extra = "".join(got_chars[k] if k < len(got_chars) else "?" for k in ins)
+        return {"cer": round(dist / len(want), 3), "heard": got_text, "diff": diff,
+                "extra": extra, "extra_bad": head >= 1 or tail >= 1 or run >= 2}
 
 
 def load():
