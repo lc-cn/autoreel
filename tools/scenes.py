@@ -48,6 +48,7 @@ CSS = """
       .quote .qt { font-size: 84px; font-weight: 900; line-height: 1.32; margin-top: 10px; }
       .quote .qt em { font-style: normal; color: var(--c); }
       .quote .ch { display: inline-block; }
+      .hide { display: none !important; }
       .credit { position: absolute; right: 190px; top: 1395px; font-size: 22px; color: rgba(255,255,255,0.7); background: rgba(0,0,0,0.35); padding: 4px 10px; border-radius: 8px; }
 """
 
@@ -55,7 +56,7 @@ CSS = """
 def _text_parts(i, n, it, split_title, small=False):
     lines = split_title(it["title"])
     tl_html = "".join(f'<div class="tline" id="s{i}-l{k}">' + "".join(f'<span class="ch">{E(c)}</span>' for c in ln) + "</div>" for k, ln in enumerate(lines))
-    meta = f'<div class="meta{" top" if small else ""}" id="s{i}-meta"><span class="tag">{E(it["tag"])}</span><span class="idx">0{i + 1} / 0{n}</span></div>'
+    meta = f'<div class="meta{" top" if small else ""}" id="s{i}-meta"><span class="tag">{E(it["tag"])}</span><span class="idx">{i + 1:02d} / {n:02d}</span></div>'
     title = f'<div class="title{" small" if small else ""}" id="s{i}-title">{tl_html}</div>'
     return meta, title
 
@@ -121,6 +122,12 @@ def _bg_video(i, src, s, e):
     return _bg_layer(i, s, e, _video_tag(i, src, s, e))
 
 
+def numbering(S):
+    """频道的分段序号：spoken 念出来并显示（默认）、visual 只在画面显示、none 都不要。"""
+    v = (S or {}).get("numbering", "spoken")
+    return v if v in ("spoken", "visual", "none") else "spoken"
+
+
 def render(i, n, it, s, e, S, ctx, split_title):
     """返回 (场景 html, 背景层 html, js 列表, 实际镜头类型)。"""
     shot = it.get("shot") or {"type": "text"}
@@ -142,6 +149,8 @@ def render(i, n, it, s, e, S, ctx, split_title):
         kind, (inner, js) = "text", _text(i, n, it, shot, s, e, S, ctx, split_title)
     if ctx.bg:
         bg = ctx.bg
+    if numbering(S) == "none":  # 不要序号的频道（讲故事类）：隐藏大号序号和「01 / 04」，保留元素给动画用
+        inner = inner.replace('class="ghost"', 'class="ghost hide"').replace('class="idx"', 'class="idx hide"')
     over = " over" if bg else ""
     if bg:
         js.append(f'tl.fromTo("#s{i}-bgw", {{scale: 1.0}}, {{scale: 1.08, duration: {T(e - s)}, ease: "none"}}, {T(s)});')
@@ -155,7 +164,7 @@ def render(i, n, it, s, e, S, ctx, split_title):
 # ───────── 各类镜头 ─────────
 def _text(i, n, it, shot, s, e, S, ctx, split_title):
     meta, title = _text_parts(i, n, it, split_title)
-    html_ = f'<div class="ghost" id="s{i}-ghost">0{i + 1}</div>{meta}{title}<div class="bar" id="s{i}-bar"></div>'
+    html_ = f'<div class="ghost" id="s{i}-ghost">{i + 1:02d}</div>{meta}{title}<div class="bar" id="s{i}-bar"></div>'
     js = _text_js(i, s, e)
     js.append(f'tl.fromTo("#s{i}-title", {{scale: 1}}, {{scale: 1.04, duration: {T(e - s - 0.6)}, ease: "none"}}, {T(s + 0.5)});')
     js.append(_exit_js(i, e, f"#s{i}-title, #s{i}-meta, #s{i}-ghost, #s{i}-bar"))
@@ -293,7 +302,7 @@ def _quote(i, n, it, shot, s, e, S, ctx, split_title):
     for k, ch in enumerate(text):
         inner = f'<span class="ch">{E(ch)}</span>'
         body += f"<em>{inner}</em>" if a >= 0 and a <= k < a + len(hl) else inner
-    meta = f'<div class="meta top" id="s{i}-meta"><span class="tag">{E(it["tag"])}</span><span class="idx">0{i + 1} / 0{n}</span></div>'
+    meta = f'<div class="meta top" id="s{i}-meta"><span class="tag">{E(it["tag"])}</span><span class="idx">{i + 1:02d} / {n:02d}</span></div>'
     html_ = f'{meta}<div class="quote" id="s{i}-q"><div class="qm">“</div><div class="qt">{body}</div></div>'
     js = [f'tl.fromTo("#s{i}-meta", {{y: 40, opacity: 0}}, {{y: 0, opacity: 1, duration: 0.35, ease: "power3.out"}}, {T(s + 0.05)});',
           f'tl.fromTo("#s{i}-q .qm", {{scale: 0.4, opacity: 0, transformOrigin: "0% 100%"}}, {{scale: 1, opacity: 0.85, duration: 0.4, ease: "back.out(2)"}}, {T(s + 0.1)});',

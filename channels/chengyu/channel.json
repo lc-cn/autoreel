@@ -8,7 +8,7 @@
   "deco": "IDIOM<br />STORY",
   "src": "资料来源：成语词典、典籍原文",
   "hook": "topic",
-  "intro": "{name}。今天的成语是{topic_say}，{n}步带你学会它。",
+  "intro": "{name}。今天的成语是{topic_say}。",
   "outro": "学会了吗？关注我，每天一个成语，一年多懂三百多个。",
   "items": [
     3,
@@ -23,6 +23,7 @@
     250
   ],
   "max_seconds": 70,
+  "numbering": "none",
   "hashtags": [
     "每天一个成语",
     "成语故事",

@@ -40,6 +40,7 @@ const FIELDS = [
   { k: "items", label: "每期几段（最少–最多）", type: "range" },
   { k: "say_chars", label: "每段口播字数（最少–最多）", type: "range" },
   { k: "say_total", label: "整期口播总字数（最少–最多）", type: "range" },
+  { k: "numbering", label: "分段序号", type: "numbering", help: "分点讲解用「念出来」；讲故事、一气呵成的用「不要序号」" },
   { k: "max_seconds", label: "时长上限（秒）", type: "number", min: 20, max: 180, help: "超过就要求 AI 删稿；语速是固定的" },
   { sec: "画面文字" },
   { k: "hook", label: "开场形式", type: "hook", help: "开场画面的大字显示什么" },
@@ -136,6 +137,7 @@ function validate(id) {
   if (v.speed != null && !(v.speed >= 0.8 && v.speed <= 1.25)) errs.push("语速倍率应在 0.8–1.25 之间");
   if (v.voice && R.voices.length && !R.voices.includes(v.voice)) warns.push(`仓库 tools/voices/ 里没有「${v.voice}」这个音色`);
   if (!(c.hashtags || []).length) warns.push("没有固定话题");
+  if (c.numbering === "none" && String(c.intro || "").includes("{n}")) warns.push("不要序号的频道，开场白里的 {n}（「分 N 点」「N 步」）听起来会不连贯");
   if (Array.isArray(c.publish_to)) {
     const ids = (E.cfg.accounts || []).map((a) => a.id);
     if (!c.publish_to.length) errs.push("至少选一个发布账号；不想发了就在左侧列表关掉这个频道");
@@ -179,6 +181,11 @@ function fieldHTML(f, c) {
       const groups = Object.keys(PN).map((pf) => [pf, acc.filter((a) => a.platform === pf)]).filter(([, l]) => l.length);
       input = `<div class="accg" id="${id}">${groups.map(([pf, l]) => `<div class="accr"><span class="badge ${pf}">${PN[pf][1]}</span><b>${PN[pf][0]}</b>
           <div class="accs">${l.map((a) => `<label class="check"><input type="checkbox" value="${esc(a.id)}" ${all || val.includes(a.id) ? "checked" : ""} /> ${esc(a.name)}</label>`).join("")}</div></div>`).join("")}</div><span class="help">${all ? "现在是默认：发往全部账号。" : ""}账号在<a href="#platforms">「发布平台」</a>里新建和管理。</span>`;
+      break;
+    }
+    case "numbering": {
+      const N = { spoken: "念出来：配音念「一、二、三」，画面显示序号", visual: "只在画面显示序号，配音不念", none: "不要序号：像讲故事一样接着说" };
+      input = `<select id="${id}">${Object.entries(N).map(([k, t]) => `<option value="${k}" ${k === (val || "spoken") ? "selected" : ""}>${esc(t)}</option>`).join("")}</select>`;
       break;
     }
     case "hook": {

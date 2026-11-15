@@ -79,6 +79,10 @@ def check(cid):
             errs.append(f"voice.{k}「{v[k]}」不在可选语气里：{'、'.join(moods)}")
     if "speed" in v and not (isinstance(v["speed"], (int, float)) and 0.8 <= v["speed"] <= 1.25):
         errs.append("voice.speed 是语速倍率，应在 0.8–1.25 之间（1 为默认）")
+    if c.get("numbering", "spoken") not in ("spoken", "visual", "none"):
+        errs.append("numbering 只能是 spoken（念序号）、visual（只在画面显示）、none（不要序号）")
+    if c.get("numbering") == "none" and "{n}" in str(c.get("intro", "")):
+        warns.append("这个频道不念序号，开场白里的 {n}（例如「分 N 点」「N 步」）听起来会不连贯")
     if "publish_to" in c:
         try:
             cfg_ = json.load(open(os.path.join(ROOT, "autoreel.config.json"), encoding="utf-8"))

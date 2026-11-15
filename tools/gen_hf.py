@@ -98,7 +98,8 @@ def make_caption(data):
     out = [f"【{S['name']}｜{md}】{data.get('headline') or S['slogan']}", "",
            S["label"] + "：" + "｜".join(categories(items)), ""]
     for i, it in enumerate(items):
-        out.append(f"{circled[i]} 【{it['tag']}】{it['title'].replace('|', '')}")
+        mark = circled[i] + " " if SC.numbering(S) != "none" and i < len(circled) else ("▪ " if SC.numbering(S) == "none" else "")
+        out.append(f"{mark}【{it['tag']}】{it['title'].replace('|', '')}")
         out.append(it.get("detail") or tts.display_text(it["say"]))
         out.append("")
     srcs = []
@@ -164,10 +165,10 @@ def phrases(text, t0, t1):
 CN_NUM = "一二三四五六七八九十"
 
 
-def spoken_item(i, say):
-    """口播不念分类（画面上已有），只念序号：一、二、三……"""
+def spoken_item(i, say, numbering="spoken"):
+    """口播不念分类（画面上已有）；频道的分段序号是 spoken 时在前面念「一、二、三……」，否则直接念正文。"""
     say = re.sub(r"^[^，。：:]{1,4}[：:]", "", say.strip())
-    return f"{CN_NUM[i]}，{say}"
+    return f"{CN_NUM[i]}，{say}" if numbering == "spoken" else say
 
 
 def split_title(t, n=8):
@@ -214,7 +215,8 @@ def build(data, times, dur, proj, spoken):
     css_colors = "".join(f".c{i}{{--c:{color(it['tag'], i)}}}" for i, it in enumerate(items))
     css_colors += "".join(f".k{j}{{--c:{color(c, items.index(next(x for x in items if x['tag'] == c)))}}}" for j, c in enumerate(cats))
     chips = "".join(f'<span class="chip k{j}" id="hook-chip{j}">{E(c)}</span>' for j, c in enumerate(cats))
-    agenda = "".join(f'<li class="ag c{i}" id="ag{i}"><span class="num">{i + 1}</span><span class="agt">{E(it["title"].replace("|", ""))}</span></li>' for i, it in enumerate(items))
+    nb = SC.numbering(S) != "none"
+    agenda = "".join(f'<li class="ag c{i}" id="ag{i}"><span class="num">{i + 1 if nb else "•"}</span><span class="agt">{E(it["title"].replace("|", ""))}</span></li>' for i, it in enumerate(items))
     follow_top = 580 + n * 104 + (n - 1) * 26 + 80
 
     # 分镜：每段按 shot 渲染（文字 / 实拍素材 / 图表 / 地图 / 时间线 / 金句 / 你的素材），失败自动退回文字镜头
@@ -384,7 +386,7 @@ def main():
     data.setdefault("outro", S["outro"])
     vs = S.get("voice") or {}  # 频道的配音语气：mood 默认语气，intro_mood / outro_mood 开场和结尾
     lines = ([{"text": data["intro"], "mood": data.get("intro_mood") or vs.get("intro_mood", "轻快")}]
-             + [{"text": spoken_item(i, it["say"]), "mood": it.get("mood") or vs.get("mood", "平稳"), "pace": it.get("pace") or vs.get("pace")}
+             + [{"text": spoken_item(i, it["say"], SC.numbering(S)), "mood": it.get("mood") or vs.get("mood", "平稳"), "pace": it.get("pace") or vs.get("pace")}
                 for i, it in enumerate(data["items"])]
              + [{"text": data["outro"], "mood": data.get("outro_mood") or vs.get("outro_mood", "温暖")}])
     voice = json.loads(json.dumps(VOICE))  # 频道可以单独指定音色
