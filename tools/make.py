@@ -2,6 +2,7 @@
 
 任何 AI 工具（或人）写好 script.json 后都用它出片，不依赖特定的 AI 工具：
     python3 tools/make.py <频道id> <script.json> [--date YYYY-MM-DD] [--push] [--notify]
+    python3 tools/make.py <频道id> <script.json> --date YYYY-MM-DD --push-only [--notify]   # 看过检查帧后推送上一次的成片
 
 退出码：
     0  成功（加了 --push 就已推送）
@@ -55,12 +56,41 @@ def frames(video, proj, out_dir, dur):
     for m in re.finditer(r'id="scene(\d+)"[^>]*data-start="([\d.]+)" data-duration="([\d.]+)"', html):
         i, s, d = int(m[1]), float(m[2]), float(m[3])
         pts.append((f"第{i + 1}段", s + d / 2))
+    # 每段实拍素材各一帧，文件名带上段落和搜索词，方便核对画面和口播是不是一回事
+    try:
+        used = json.load(open(os.path.join(proj, "素材.json"), encoding="utf-8"))
+    except Exception:
+        used = []
+    for u in used:
+        m = re.search(r'<video[^>]*src="%s"[^>]*data-start="([\d.]+)" data-duration="([\d.]+)"' % re.escape(u["file"]), html)
+        if m:
+            q = re.sub(r"[^A-Za-z0-9]+", "-", u["query"]).strip("-")[:40]
+            pts.append((f"实拍-{u['where'].replace(' ', '')}-{q}", float(m[1]) + float(m[2]) / 2))
     out = []
     for name, t in pts:
         f = os.path.join(out_dir, f"{len(out):02d}-{name}-{t:.1f}s.jpg")
         sh(["ffmpeg", "-loglevel", "error", "-y", "-ss", f"{t:.2f}", "-i", video, "-frames:v", "1", "-vf", "scale=540:-1", f])
         out.append(f)
     return out
+
+
+def push_and_notify(a, res, W, D, out, finish):
+    meta = json.load(open(os.path.join(W, "发布信息.json"), encoding="utf-8"))
+    res["title"] = meta.get("title", "")
+    if a.push:
+        print("④ 推送……", flush=True)
+        r = sh(["bash", os.path.join(HERE, "push_clip.sh"), a.channel, D, out, os.path.join(W, "发布信息.json"),
+                os.path.join(W, "抖音文案.txt")], cwd=ROOT)
+        res["branch"] = f"clip-{D}-{a.channel}"
+        res["pushed"] = r.stdout.strip().splitlines()[-1] if r.stdout.strip() else "已推送"
+        print("   " + res["pushed"])
+    if a.notify:
+        dur = res.get("duration") or 0
+        msg = f"{res['title']}\n时长 {dur:.0f} 秒" + (f"，已推送 {res.get('branch')}，到点由插件发布" if a.push else "（未推送）")
+        for n, r in notify.send("made", f"{res['name']} {D} 已出片", msg, channel=a.channel, slot=res["name"],
+                                video_title=res["title"], branch=res.get("branch", "")):
+            print(f"通知 {n}：{r}")
+    finish(0)
 
 
 def main():
@@ -70,6 +100,7 @@ def main():
     ap.add_argument("--date", help="这一期的日期 YYYY-MM-DD，默认取稿子里的 date")
     ap.add_argument("--work", help="工作目录，默认 /tmp/autoreel-work/<频道>-<日期>")
     ap.add_argument("--push", action="store_true", help="成功后推送到 clip-<日期>-<频道> 分支")
+    ap.add_argument("--push-only", action="store_true", help="不重新出片，把工作目录里上一次成功的成片推送出去（看过检查帧之后用）")
     ap.add_argument("--notify", action="store_true", help="按 autoreel.config.json 的 notify 发 webhook 通知")
     a = ap.parse_args()
 
@@ -104,6 +135,19 @@ def main():
                 print(f"通知 {n}：{r}")
         sys.exit(code)
 
+    if a.push_only:  # 推送上一次（不带 --push）出好的片子
+        try:
+            prev = json.load(open(os.path.join(W, "结果.json"), encoding="utf-8"))
+        except Exception:
+            prev = {}
+        out = os.path.join(W, "out.mp4")
+        if prev.get("ok") is not True or not os.path.exists(out):
+            res["problems"].append(f"{W} 里没有成功出好的片子：先不带 --push 运行一次，看过检查帧再用 --push-only")
+            finish(2)
+        res.update({k: prev[k] for k in ("duration", "frames", "title", "voice", "footage") if k in prev})
+        res["warnings"] = prev.get("warnings", [])
+        a.push = True
+        push_and_notify(a, res, W, D, out, finish)
     if early:
         res["problems"] += early
         finish(2)
@@ -151,22 +195,16 @@ def main():
         for f in res["frames"]:
             print("   " + f)
 
+        try:
+            res["footage"] = json.load(open(os.path.join(proj, "素材.json"), encoding="utf-8"))
+        except Exception:
+            pass
+        if res.get("footage"):
+            print("   有实拍画面：文件名带「实拍」的检查帧，要逐张核对画面内容和这一段口播说的是不是一回事")
+        res["ok"] = True
+
         # 4. 推送
-        meta = json.load(open(os.path.join(W, "发布信息.json"), encoding="utf-8"))
-        res["title"] = meta.get("title", "")
-        if a.push:
-            print("④ 推送……", flush=True)
-            r = sh(["bash", os.path.join(HERE, "push_clip.sh"), a.channel, D, out, os.path.join(W, "发布信息.json"),
-                    os.path.join(W, "抖音文案.txt")], cwd=ROOT)
-            res["branch"] = f"clip-{D}-{a.channel}"
-            res["pushed"] = r.stdout.strip().splitlines()[-1] if r.stdout.strip() else "已推送"
-            print("   " + res["pushed"])
-        if a.notify:
-            msg = f"{res['title']}\n时长 {dur:.0f} 秒" + (f"，已推送 {res.get('branch')}，到点由插件发布" if a.push else "（未推送）")
-            for n, r in notify.send("made", f"{res['name']} {D} 已出片", msg, channel=a.channel, slot=res["name"],
-                                    video_title=res["title"], branch=res.get("branch", "")):
-                print(f"通知 {n}：{r}")
-        finish(0)
+        push_and_notify(a, res, W, D, out, finish)
     except SystemExit:
         raise
     except Exception as e:

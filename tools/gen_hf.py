@@ -540,6 +540,8 @@ def main():
         lines_.insert(len(lines_) - 1, "🎬 画面素材：" + "、".join(dict.fromkeys(ctx.credits)) + "（免版权素材）")
         cap = "\n".join(lines_)
         open(cap_path, "w").write(cap)
+    if ctx:  # 实拍素材清单（make.py 按它给每段实拍抽检查帧，核对画面和口播）
+        json.dump(ctx.used, open(f"{proj}/素材.json", "w"), ensure_ascii=False, indent=1)
     for w in dict.fromkeys(ctx.warnings if ctx else []):  # 同一条提醒只打印一次
         print(f"提醒：{w}")
     if ctx:

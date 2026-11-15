@@ -84,6 +84,7 @@ class Ctx:
         self.chars = set()
         self.credits = []
         self.warnings = []
+        self.used = []  # 用到的实拍素材：[{file, query, where}]，make.py 按它抽检查帧
         os.makedirs(f"{proj}/assets/media", exist_ok=True)
 
     def text(self, *xs):
@@ -105,6 +106,7 @@ class Ctx:
             self.warnings.append(f"{where}没找到「{query}」的素材，改为文字镜头")
             return None
         self.credits.append(f"{r['source']}" + (f" · {r['author']}" if r.get("author") else ""))
+        self.used.append({"file": f"assets/media/f{i}.mp4", "query": query, "where": where, "url": r.get("url", "")})
         return f"assets/media/f{i}.mp4"
 
 

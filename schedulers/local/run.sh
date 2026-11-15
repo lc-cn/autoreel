@@ -16,7 +16,7 @@ LOG="$REPO/schedulers/local/logs/$(TZ=Asia/Shanghai date +%F)-$CH.log"
   echo "== $(date) 开始 $CH"
   git pull -q --ff-only || echo "git pull 失败，用本地版本继续"
   bash tools/setup.sh >/dev/null
-  PROMPT="按仓库 AGENTS.md 的说明，制作 ${CH} 频道（今天，日期按北京时间；channel.json 的 days_ahead 为 1 时连明天一起做），用 tools/make.py 加 --push --notify 推送到 clip-日期-${CH} 分支，已存在的跳过。这是仓库主人安排的每日任务，已授权推送这些分支；brief 要求标记「已做」时，只提交那一个文件到默认分支。不要登录或调用任何视频平台。最后用一段话总结选题、来源和推送结果。"
+  PROMPT="按仓库 AGENTS.md 的说明，制作 ${CH} 频道（今天，日期按北京时间；channel.json 的 days_ahead 为 1 时连明天一起做），用 tools/make.py 出片，检查帧（尤其实拍画面）和口播对得上后再加 --push-only --notify 推送到 clip-日期-${CH} 分支，已存在的跳过。这是仓库主人安排的每日任务，已授权推送这些分支；brief 要求标记「已做」时，只提交那一个文件到默认分支。不要登录或调用任何视频平台。最后用一段话总结选题、来源和推送结果。"
   export PROMPT
   eval "$AGENT_CMD"
   echo "== $(date) 结束 $CH"
