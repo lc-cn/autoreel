@@ -28,7 +28,7 @@ description: 自影 AutoReel 安装与定时任务向导。一步步帮用户选
 ## 第 3 步：配音、素材、通知（问 1 轮，可跳过）
 
 - **配音**：默认 CosyVoice3 离线配音（免费，慢）；有火山引擎账号可以用豆包语音（快，按量付费）。见 `docs/部署指南.md` 第 3 步。
-- **实拍素材**：Pexels / Pixabay 的免费 API 密钥，放在运行环境的环境变量 `PEXELS_API_KEY` / `PIXABAY_API_KEY` 里。
+- **实拍素材**：Pixabay 的免费 API 密钥（<https://pixabay.com/api/docs/>，登录后页面上直接显示），放在运行环境的环境变量 `PIXABAY_API_KEY` 里。Pexels 已停止发放新密钥，有旧密钥的可以再加 `PEXELS_API_KEY`。
 - **通知**：出片成功或失败时推到企业微信、飞书、钉钉、QQ（OneBot）、Bark 等。在 `autoreel.config.json` 的 `notify` 里加一项，写法见 `tools/notify.py` 开头；地址里的密钥写成 `${环境变量名}`，让用户自己在运行环境里设置这个环境变量。**不要让用户把密钥发在对话里。**
 
 ## 第 4 步：建定时任务（核心）

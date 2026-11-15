@@ -1,6 +1,6 @@
 """自影 · 实拍素材：按关键词从 Pexels / Pixabay 取免版权视频，整理成 1080×1920 竖屏片段。
 
-密钥从环境变量读取（不要写进仓库）：PEXELS_API_KEY、PIXABAY_API_KEY，有一个即可。
+密钥从环境变量读取（不要写进仓库）：PIXABAY_API_KEY（推荐，免费申请）；PEXELS_API_KEY（Pexels 已停止发放新密钥，有旧密钥的可以继续用），有一个即可。
 两家素材都可免费商用、无需署名（以各自许可为准）；我们仍在发布文案末尾注明「画面素材：Pexels / Pixabay」。
 
 用法（被 gen_hf.py 调用）：
