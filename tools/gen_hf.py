@@ -8,6 +8,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import tts
 import scenes as SC
+import budget
 
 COLORS = {"国际": "#ff5c5c", "国内": "#ff8a4c", "时政": "#ff8a4c", "外交": "#9a7cff", "财经": "#ffb840",
           "科技": "#40c8ff", "体育": "#4fdc8c", "娱乐": "#ff6eb4", "社会": "#f2d14b", "健康": "#5ee0c8",
@@ -53,10 +54,7 @@ def series(data):
     return CHANNELS[key]
 
 
-def follow_text(S):
-    """结尾「关注我 · 每天…」：口号本身以「每天」开头时不再重复。"""
-    sl = S.get("slogan", "")
-    return sl if sl.startswith("每天") else "每天" + sl
+follow_text = budget.follow_text  # 结尾「关注我 · 每天…」
 
 
 def color(tag, i=0):
@@ -70,22 +68,12 @@ def cn_num(n):
     return d[n // 10] + "十" + (d[n % 10] if n % 10 else "")
 
 
-def categories(items):
-    seen = []
-    for it in items:
-        if it["tag"] not in seen: seen.append(it["tag"])
-    return seen
+categories = budget.categories
 
 
 def auto_intro(data):
     """开场口播：按频道 intro 模板生成。可用 {name} {date} {n} {topic_say} {categories}。"""
-    S = series(data)
-    m = re.search(r"(\d+)月(\d+)日", data.get("date", ""))
-    day = f"{int(m.group(1))}月{int(m.group(2))}日" if m else ""  # 字幕显示数字，配音时自动转成读法
-    cats = categories(data["items"])
-    joined = cats[0] if len(cats) == 1 else "、".join(cats[:-1]) + "和" + cats[-1]
-    return S.get("intro", "{name}，{date}。").format(name=S["name"], date=day, n=len(data["items"]),
-                                                    topic_say=data.get("topic_say") or data.get("topic", ""), categories=joined)
+    return budget.auto_intro(data, series(data))
 
 
 def make_caption(data):
@@ -109,6 +97,8 @@ def make_caption(data):
     kind = S["src"].split("：")[0] if "：" in S["src"] else "信息来源"
     default = S["src"].split("：", 1)[1] if "：" in S["src"] else "公开资料"
     out.append(f"📌 {kind}：" + ("、".join(srcs) if srcs else default) + "（据公开资料整理）")
+    if budget.disclaimer(S):  # 频道固定声明单独一行，不会被各段的 source 顶掉
+        out.append(f"⚠️ {budget.disclaimer(S)}")
     if data.get("ask"):
         o = ask_options(data)
         out.append(f"💬 {tts.display_text(data['ask'])}" + (f" 评论区打 A（{o[0]}）或 B（{o[1]}）" if o else ""))
@@ -169,10 +159,7 @@ def phrases(text, t0, t1, keep=()):
 CN_NUM = "一二三四五六七八九十"
 
 
-def spoken_item(i, say, numbering="spoken"):
-    """口播不念分类（画面上已有）；频道的分段序号是 spoken 时在前面念「一、二、三……」，否则直接念正文。"""
-    say = re.sub(r"^[^，。：:]{1,4}[：:]", "", say.strip())
-    return f"{CN_NUM[i]}，{say}" if numbering == "spoken" else say
+spoken_item = budget.spoken_item  # 口播不念分类；numbering 为 spoken 时前面念「一、二、三……」
 
 
 def split_title(t, n=8):
@@ -180,14 +167,17 @@ def split_title(t, n=8):
     if "|" in t: return [x for x in t.split("|") if x][:2]
     if len(t) <= n: return [t]
     mid = len(t) / 2
+    bounds, acc = set(), 0  # 优先断在词语之间（分词），不行再退回逐字
+    for w in SC._tokens(t)[:-1]:
+        acc += len(w)
+        bounds.add(acc)
     ok = [k for k in range(2, len(t) - 1) if not (re.match(r"[0-9A-Za-z.%]", t[k - 1]) and re.match(r"[0-9A-Za-z.%]", t[k]))]
+    ok = [k for k in ok if k in bounds] or ok
     k = min(ok, key=lambda k: abs(k - mid)) if ok else int(mid)
     return [t[:k], t[k:]]
 
 
-def ask_options(data):
-    o = [str(x).strip() for x in (data.get("ask_options") or []) if str(x).strip()]
-    return o[:2] if len(o) >= 2 else []
+ask_options = budget.ask_options
 
 
 def ask_html(data, follow_top):
@@ -276,8 +266,27 @@ def build(data, times, dur, proj, spoken):
     css_colors += "".join(f".k{j}{{--c:{color(c, items.index(next(x for x in items if x['tag'] == c)))}}}" for j, c in enumerate(cats))
     chips = "".join(f'<span class="chip k{j}" id="hook-chip{j}">{E(c)}</span>' for j, c in enumerate(cats))
     nb = SC.numbering(S) != "none"
-    agenda = "".join(f'<li class="ag c{i}" id="ag{i}"><span class="num">{i + 1 if nb else "•"}</span><span class="agt">{E(it["title"].replace("|", ""))}</span></li>' for i, it in enumerate(items))
+    # 开场目录（channel.json 的 agenda）：full 标签 + 全部标题；tags 只列标签；none 都不列。
+    # 有钩子句时默认 tags：第 1 秒就把各段标题（往往就是结论）亮出来，观众没有理由看完
+    amode = budget.agenda_mode(S, bool(hookline))
+    agenda = "".join(f'<li class="ag c{i}" id="ag{i}"><span class="num">{i + 1 if nb else "•"}</span><span class="agt">{E(it["title"].replace("|", ""))}</span></li>' for i, it in enumerate(items)) if amode == "full" else ""
+    cover_row = f'<div class="cover"><span class="lab">{E(S["label"])}</span>{chips}</div>' if amode != "none" else ""
+    # 有钩子句时 hook 顶替了开场大字，主题（成语、书名……）用小字标签补上（channel.json 的 topic_badge）
+    badge = budget.topic_badge(data, S)
+    badge_html = f'<div class="tbadge" id="hook-topic">{E(badge)}</div>' if badge else ""
+    # 正文画面右下的来源行，带上频道固定声明（channel.json 的 disclaimer）
+    disc = budget.disclaimer(S)
+    src_line = S["src"] + (f" · {disc}" if disc else "")
+    src_fs = max(20, min(28, int(880 / max(1, len(src_line)))))
     follow_top = 580 + n * 104 + (n - 1) * 26 + 80
+    hook_js = ""
+    if badge:
+        hook_js += 'tl.fromTo("#hook-topic", {scale: 0.7, opacity: 0, transformOrigin: "0% 50%"}, {scale: 1, opacity: 1, duration: 0.3, ease: "back.out(2.5)"}, 0.05);\n      '
+    if agenda:
+        hook_js += f'tl.fromTo("#hook .agenda", {{opacity: 0.0}}, {{opacity: 1, duration: 0.35, ease: "power2.out"}}, {"0.5" if hookline else "0"});\n      '
+        hook_js += 'tl.fromTo("#hook .ag .num", {scale: 1}, {scale: 1.18, duration: 0.18, ease: "power2.out", stagger: 0.25, yoyo: true, repeat: 1}, 0.6);\n      '
+    if cover_row:
+        hook_js += 'tl.fromTo("#hook .chip", {y: 0}, {y: -10, duration: 0.3, ease: "sine.inOut", stagger: 0.12, yoyo: true, repeat: 1}, 0.2);\n      '
 
     # 分镜：每段按 shot 渲染（文字 / 实拍素材 / 图表 / 地图 / 时间线 / 金句 / 你的素材），失败自动退回文字镜头
     ctx = SC.Ctx(proj, ROOT, os.environ.get("AUTOREEL_CACHE", "/tmp/ziying-footage-cache"))
@@ -344,7 +353,7 @@ def build(data, times, dur, proj, spoken):
       tl.fromTo("#follow", {{scale: 0.6, opacity: 0}}, {{scale: 1, opacity: 1, duration: 0.45, ease: "back.out(2.2)"}}, {T(out_start + 0.5)});''')
 
     progress = "".join(f'<div class="pgs c{i}"><div class="pgf" id="pg{i}"></div></div>' for i in range(n))
-    all_text = data["date"] + tts.display_text(data["intro"]) + tts.display_text(data["outro"]) + "💬评论区打A或B" + "".join(ask_options(data)) + "".join(it["tag"] + it["title"] + tts.display_text(it["say"]) for it in items) + "内容由AI生成热点快报今日大热点关注我每天一分钟看懂天下事信息来源公开报道本期涉及条一二三四五六七八九十月日这" + "".join(S[k] for k in ("name", "slogan", "label", "src")) + data.get("topic", "") + "".join(ctx.chars) + "单位："
+    all_text = data["date"] + tts.display_text(data["intro"]) + tts.display_text(data["outro"]) + "💬评论区打A或B" + "".join(ask_options(data)) + "".join(it["tag"] + it["title"] + tts.display_text(it["say"]) for it in items) + "内容由AI生成热点快报今日大热点关注我每天一分钟看懂天下事信息来源公开报道本期涉及条一二三四五六七八九十月日这" + "".join(S[k] for k in ("name", "slogan", "label", "src")) + data.get("topic", "") + badge + disc + "".join(ctx.chars) + "单位："
     os.makedirs(f"{proj}/assets/fonts", exist_ok=True)
     subset_font("".join(sorted(set(all_text))), f"{proj}/assets/fonts/zh.woff2")
     shutil.copy(GSAP, f"{proj}/assets/gsap.min.js")
@@ -384,6 +393,8 @@ def build(data, times, dur, proj, spoken):
       #hook .cover {{ display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-top: 46px; }}
       #hook .lab {{ font-size: 32px; color: #eef1ff; margin-right: 6px; }}
       #hook .agenda {{ list-style: none; margin-top: 56px; }}
+      #hook .tbadge {{ display: inline-block; font-size: 40px; font-weight: 800; color: #0a0a18; background: {S["mark"]}; padding: 8px 26px;
+                      border-radius: 14px; margin-bottom: 26px; letter-spacing: 2px; box-shadow: 0 4px 16px rgba(0,0,0,0.25); white-space: nowrap; }}
       .ag {{ display: flex; align-items: center; gap: 24px; font-size: 46px; font-weight: 700; padding: 16px 0;
              border-bottom: 2px solid rgba(255,255,255,0.10); white-space: nowrap; }}
       .ag .num {{ flex: none; width: 62px; height: 62px; border-radius: 16px; background: var(--c); color: #0a0a18;
@@ -446,13 +457,13 @@ def build(data, times, dur, proj, spoken):
         <div class="mark"></div><div><h1>{S["name"]}</h1><div class="date">{E(data["date"])} · {E(S["slogan"])}</div></div>
       </div>
       <div id="hook" class="clip" data-start="0" data-duration="{T(hook_end)}" data-track-index="2">
-        <div class="big{" hookline" if hookline else ""}" id="hook-big"{f' style="font-size:{hook_fs}px"' if hookline else ""}>{hook_big}</div>
-        <div class="cover"><span class="lab">{S["label"]}</span>{chips}</div>
-        <ol class="agenda">{agenda}</ol>
+        {badge_html}<div class="big{" hookline" if hookline else ""}" id="hook-big"{f' style="font-size:{hook_fs}px"' if hookline else ""}>{hook_big}</div>
+        {cover_row}
+        {f'<ol class="agenda">{agenda}</ol>' if agenda else ""}
       </div>
       {"".join(scenes)}
       <div id="progress" class="clip" data-start="{T(starts[0])}" data-duration="{T(out_start - starts[0])}" data-track-index="3">{progress}</div>
-      <div id="src" class="clip" data-start="{T(starts[0])}" data-duration="{T(out_start - starts[0])}" data-track-index="3">{S["src"]}</div>
+      <div id="src" class="clip" data-start="{T(starts[0])}" data-duration="{T(out_start - starts[0])}" data-track-index="3" style="font-size:{src_fs}px">{E(src_line)}</div>
       <div id="outro" class="clip" data-start="{T(out_start)}" data-duration="{T(dur - out_start)}" data-track-index="2">
         <div id="recap">{recap}</div>
         {ask_html(data, follow_top)}
@@ -471,9 +482,7 @@ def build(data, times, dur, proj, spoken):
       tl.fromTo("#deco", {{x: 0}}, {{x: -120, duration: {T(dur)}, ease: "none"}}, 0);
       tl.fromTo("#grid", {{y: 0}}, {{y: -180, duration: {T(dur)}, ease: "none"}}, 0);
       tl.fromTo("#hook-big", {{scale: 1}}, {{scale: 1.06, duration: {T(hook_end)}, ease: "none"}}, 0);
-      tl.fromTo("#hook .agenda", {{opacity: 0.0}}, {{opacity: 1, duration: 0.35, ease: "power2.out"}}, {"0.5" if hookline else "0"});
-      tl.fromTo("#hook .chip", {{y: 0}}, {{y: -10, duration: 0.3, ease: "sine.inOut", stagger: 0.12, yoyo: true, repeat: 1}}, 0.2);
-      tl.fromTo("#hook .ag .num", {{scale: 1}}, {{scale: 1.18, duration: 0.18, ease: "power2.out", stagger: 0.25, yoyo: true, repeat: 1}}, 0.6);
+      {hook_js}
       tl.to("#hook", {{opacity: 0, y: -60, duration: 0.2, ease: "power2.in"}}, {T(hook_end - 0.2)});
       {"".join(js)}
       window.__timelines["main"] = tl;
@@ -490,13 +499,9 @@ def main():
     S = series(data)
     target = float(S.get("max_seconds", 90)) + 10  # 正常语速读完即可；超出上限时由写稿环节删短
     # 开场：有钩子句就直接念钩子（频道名和日期只在画面顶部显示），没有才用频道的开场白模板
-    data["intro"] = data.get("intro") or (data["hook"] if data.get("hook") else auto_intro(data))
-    if data.get("ask") and "outro" not in data:  # 结尾：先抛互动问题，再请关注
-        ask = data["ask"].strip()
-        opts = [str(x).strip() for x in (data.get("ask_options") or [])][:2]
-        pick = f"{opts[0]}的打A，{opts[1]}的打B。" if len(opts) == 2 else ""
-        data["outro"] = f"{ask}{'' if ask[-1:] in '？?。！!' else '。'}{pick}关注我，{follow_text(S)}。"
-    data.setdefault("outro", S["outro"])
+    # 结尾：有 ask 就先抛互动问题，再请关注；拼法和 make.py 的时长预检共用 budget.py
+    data["intro"] = budget.intro_text(data, S)
+    data["outro"] = budget.outro_text(data, S)
     vs = S.get("voice") or {}  # 频道的配音语气：mood 默认语气，intro_mood / outro_mood 开场和结尾
     lines = ([{"text": data["intro"], "mood": data.get("intro_mood") or vs.get("intro_mood", "轻快")}]
              + [{"text": spoken_item(i, it["say"], SC.numbering(S)), "mood": it.get("mood") or vs.get("mood", "平稳"), "pace": it.get("pace") or vs.get("pace")}
@@ -529,10 +534,7 @@ def main():
     cap = make_caption(data)
     cap_path = os.path.join(os.path.dirname(os.path.abspath(src)), "抖音文案.txt")
     open(cap_path, "w").write(cap)
-    # 发布信息（浏览器插件用）：标题≤30字；正文=文案去掉最后一行话题；话题单独传
-    m = re.search(r"(\d+)月(\d+)日", data["date"])
-    md = f"{int(m.group(1))}月{int(m.group(2))}日" if m else ""
-    head = data.get("headline") or "、".join(it["title"].replace("|", "") for it in data["items"][:2])
+    # 发布信息（浏览器插件用）：标题≤30字（格式见 budget.publish_title）；正文=文案去掉最后一行话题；话题单独传
     tags = [t.lstrip("#") for t in (data.get("hashtags") or S["hashtags"] + categories(data["items"]))]
     ctx = getattr(build, "ctx", None)
     if ctx and ctx.credits:  # 实拍素材署名：写进文案（来源行之后）
@@ -546,7 +548,7 @@ def main():
         print(f"提醒：{w}")
     if ctx:
         print("分镜：" + " / ".join(f"{i + 1}.{k}" for i, k in enumerate(build.kinds)))
-    meta = {"title": f"{S['name']}{md}｜{head}"[:30], "desc": cap.rsplit("\n", 1)[0], "tags": tags[:5],
+    meta = {"title": budget.publish_title(data, S),  # channel.json 的 title_format，默认「headline｜频道名」 "desc": cap.rsplit("\n", 1)[0], "tags": tags[:5],
             "declaration": (CONFIG.get("publish") or {}).get("declaration", "内容由AI生成"), "collection": S.get("collection", S["name"]),
             "channel": S["id"]}
     # 竖封面 3:4 + 横封面 4:3（JPEG，base64 内嵌在发布信息里，插件解出来上传）

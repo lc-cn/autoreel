@@ -58,9 +58,13 @@ description: 交互式新建、编辑、停用或删除自影频道。一步步�
   - `count`：「今日 N 条…」，适合合集类；
   - `topic`：开场大字显示本期话题，适合一期一个主题；
   - `date`：开场大字显示日期，适合「每日一 X」。
-- **时长**：资讯类 45–65 秒，讲解类 60–80 秒。用时长倒推每段字数，按每秒约 5 个字算。
+- **时长**：资讯类 45–65 秒，讲解类 60–80 秒；平台有最短时长要求（例如收益要满 1 分钟）时，再定一个下限 `min_seconds`（比要求多留 2 秒，例如 62）。用时长倒推字数：整期（含开场钩子、结尾互动和关注语，约 60 字）按每秒约 4.6 个字（含标点）算，正文 `say_total` ≈ 时长 × 4.6 − 60。写完运行 `check_channel.py`，它用和出片预检同一套估算告诉你字数范围能不能落在时长范围里。
 - **发布时间**：结合目标观众的作息给建议，例如上班族看午休和晚间，学生看放学后。制作时间要比发布时间早至少 45 分钟。
 - **画面偏好**：按内容推荐分镜类型（见 `autoreel` 技能的分镜表），例如资讯配地图和图表、读书配金句、好物只用用户素材。带货类不能用实拍素材冒充产品。
+- **开场目录**（`agenda`）：开场第 1 秒和封面上要不要列出各段。`full` 列标签和全部标题（合集类，如热点快报，标题本身就是看点）；`tags` 只列标签（默认，讲解、故事、冷知识类：标题往往就是结论，提前亮出来观众就不看完了）；`none` 只留钩子句。
+- **主题小标签**（`topic_badge`）：写了钩子句后，开场大字换成钩子句，主题（成语、书名）用小标签显示在钩子句上方和封面上。`hook` 为 `topic` 的频道默认显示，也可以写模板，例如 `"今日成语 · {topic}"`；不想要写 `false`。
+- **发布标题**（`title_format`）：默认「`{headline}｜{name}`」，headline 放前面，搜索和点击都更好。想带日期（例如「历史上的今天」）可以写 `"{headline}｜{name}{date}"`；超过 30 字时只保留 headline。
+- **固定声明**（`disclaimer`）：每期都必须有的一句话（带货的「价格以购买页面为准」、财经的「不构成投资建议」），写进发布文案并显示在画面来源行。不要写进 `outro`：有 `ask` 时结尾不念 outro。要配音念出来就再加 `"disclaimer_say": true`（会占 2–3 秒）。
 - **分段序号**（`numbering`）：分点讲解、合集类用 `spoken`（念「一、二、三」）；讲故事、一气呵成的用 `none`；只想画面上有序号用 `visual`。
 - **配音**（`voice`）：默认语气 `mood`、开场语气 `intro_mood`、结尾语气 `outro_mood`（可选：平稳、轻快、严肃、沉重、温暖、惊讶、激昂、悬念），以及音色 `voice`（「女声」或「男声」）。例如资讯用平稳 + 女声，历史、读书用男声，冷知识开场用惊讶。
 - **人设语气**（`tone`）：用一句话描述，例如「像跟朋友聊天」「新闻主播式播报」。
@@ -76,7 +80,8 @@ description: 交互式新建、编辑、停用或删除自影频道。一步步�
 - 基本信息：`id`、`name`、`slogan`、`audience`、`tone`、`label`、`deco`（2 个英文单词，用 `<br />` 隔开）、`src`（例如「资料来源：公开资料」）
 - 开场：`hook`；`hook` 为 `count` 时还要写 `hook_unit`
 - 口播：`intro`、`outro`（可用占位符 `{name}` `{date}` `{n}` `{topic_say}` `{categories}`）
-- 篇幅：`items`、`say_chars`、`say_total`、`max_seconds`
+- 篇幅：`items`、`say_chars`、`say_total`、`max_seconds`，可选 `min_seconds`
+- 可选画面与发布：`agenda`、`topic_badge`、`title_format`、`disclaimer`、`disclaimer_say`（第 3 步定下来的才写，不写用默认）
 - 发布：`hashtags`、`schedule`（`make`、`publish`、`days_ahead`）、`collection`
 - 配色：`theme`（`flow`、`base`、`glows`、`mark`、`stops`）
 - 配音：`voice`（`mood`、`intro_mood`、`outro_mood`，可选 `voice` 音色）
