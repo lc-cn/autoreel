@@ -6,7 +6,8 @@
 
 退出码：
     0  成功（加了 --push 就已推送）
-    2  需要改稿：时长超限、文案超长、渲染前检查有错误、有句子没念清楚……原因写在输出和 结果.json 里，改好 script.json 再运行
+    2  需要改稿：字数或预计时长超限（配音前就会检查）、成片太长或太短、文案超长、渲染前检查有错误、有句子没念清楚……
+       原因写在输出和 结果.json 里，改好 script.json 再运行
     1  出错（环境、网络等），看输出的错误信息
 工作目录默认 /tmp/autoreel-work/<频道>-<日期>/，成品 out.mp4、抽帧 frames/、结果.json 都在这里。
 CosyVoice 在没有显卡的机器上很慢（一分钟视频要 10–20 分钟），AI 工具有命令超时的话，放到后台运行再等它结束。
@@ -14,6 +15,7 @@ CosyVoice 在没有显卡的机器上很慢（一分钟视频要 10–20 分钟�
 import argparse
 import datetime
 import json
+import math
 import os
 import re
 import shutil
@@ -25,6 +27,7 @@ ROOT = os.path.dirname(HERE)
 ENV = {**os.environ, "HYPERFRAMES_NO_TELEMETRY": "1", "DO_NOT_TRACK": "1"}
 sys.path.insert(0, HERE)
 import notify  # noqa: E402
+import budget  # noqa: E402
 
 
 def sh(cmd, cwd=None, check=True):
@@ -148,8 +151,14 @@ def main():
         res["warnings"] = prev.get("warnings", [])
         a.push = True
         push_and_notify(a, res, W, D, out, finish)
-    if early:
-        res["problems"] += early
+    # 0. 配音前预检：每段字数、整期字数、预计时长（含开场 hook、结尾 ask 和选项、关注语）。配音要 10–20 分钟，超了现在就改
+    pre_p, pre_w, pre_i = budget.precheck(data, S)
+    res["precheck"] = pre_i
+    res["warnings"] += pre_w
+    print(f"⓪ 预检：正文 {pre_i['say_total']} 字（每段 {'/'.join(map(str, pre_i['say_chars']))}），预计成片约 {pre_i['estimate']:.0f} 秒"
+          + (f"（频道 {S['min_seconds']}–{S.get('max_seconds', 90)} 秒）" if S.get("min_seconds") else f"（上限 {S.get('max_seconds', 90)} 秒）"), flush=True)
+    if early or pre_p:
+        res["problems"] += early + pre_p
         finish(2)
     if not str(data.get("ask", "")).strip():
         res["warnings"].append("没有 ask（互动问题）：结尾只请关注，评论会少")
@@ -187,8 +196,12 @@ def main():
         dur = duration(out)
         res["duration"] = round(dur, 1)
         lim = float(S.get("max_seconds", 90))
+        spc = budget.sec_per_char(float((S.get("voice") or {}).get("speed") or 1.0))
         if dur > lim + 3:
-            res["problems"].append(f"成片 {dur:.0f} 秒，超过频道上限 {lim:.0f} 秒：把 say 删短（语速是固定的）")
+            res["problems"].append(f"成片 {dur:.0f} 秒，超过频道上限 {lim:.0f} 秒：把 say 删短约 {math.ceil((dur - lim) / spc)} 字（语速是固定的）")
+            finish(2)
+        if isinstance(S.get("min_seconds"), (int, float)) and dur < S["min_seconds"]:
+            res["problems"].append(f"成片 {dur:.1f} 秒，短于频道下限 {S['min_seconds']} 秒（min_seconds）：say 一共再加约 {math.ceil((S['min_seconds'] + 1 - dur) / spc)} 字")
             finish(2)
         res["frames"] = frames(out, proj, os.path.join(W, "frames"), dur)
         print("③ 检查帧（请逐张查看：中文正常、标题没被切断、左上角有「内容由AI生成」、图表地图和口播一致）：")

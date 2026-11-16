@@ -9,6 +9,13 @@ import sys
 
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
+try:
+    import budget
+except ImportError:
+    import os
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import budget
+
 FONT = "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc"
 STOPS = [(0.0, (58, 79, 216)), (0.3, (123, 63, 208)), (0.6, (31, 156, 196)), (1.0, (208, 74, 140))]
 
@@ -94,10 +101,39 @@ def render(data, w, h, color_of, S=None):
     else:
         sub = f"今日 {len(items)} {S.get('hook_unit', '条')} · {S['slogan']}"
     hook_txt = re.sub(r"\{([^{}|]+)\|[^{}]*\}", r"\1", str(data.get("hook") or "")).strip()
-    if hook_txt:  # 有钩子句：封面上方放大字钩子（重点词黄色），在主页格子里一眼看出讲什么
+    amode = budget.agenda_mode(S, bool(hook_txt))  # 和开场画面一样：full 列标题、tags 只列标签、none 都不列
+    badge = budget.topic_badge(data, S)
+    bf = _f(int(big * 0.42))
+    badge_h = int(bf.size * 1.5) + int(h * 0.025) if badge else 0
+    if hook_txt:
         lines = [x for x in hook_txt.split("|") if x] if "|" in hook_txt else _split_hook(hook_txt)
         plain = [re.sub(r"\*\*", "", x) for x in lines]
-        hf = _f(max(int(big * 0.55), min(int(big * 1.05), int((w - 2 * pad) / max(len(x) for x in plain)))))
+        cap = 1.05 if amode == "full" else 1.25  # 下面不列标题时钩子句可以更大
+        hf = _f(max(int(big * 0.55), min(int(big * cap), int((w - 2 * pad) / max(len(x) for x in plain)))))
+        text_h = len(lines) * int(hf.size * 1.22) + int(h * 0.03)
+    else:
+        sf_ = _f(int(big * 0.36))
+        text_h = int(big * 0.36) + int(h * 0.04)
+    tf = _f(int(big * 0.36))
+    tag_rows, x = [[]], pad
+    for i, tag in enumerate(budget.categories(items) if amode == "tags" else []):
+        tw = d.textlength(tag or "", font=tf)
+        if not tag:
+            continue
+        if x + tw + 40 > w - pad and tag_rows[-1]:
+            tag_rows.append([])
+            x = pad
+        tag_rows[-1].append((i, tag, x, tw))
+        x += tw + 56
+    tags_h = int(tf.size * 1.8) * len(tag_rows) if tag_rows[0] else 0
+    if amode != "full":  # 下面不列标题：主题标签、钩子句、分段标签这一块在剩余空间里居中（略偏上）
+        y += max(0, int((h * 0.9 - y - badge_h - text_h - tags_h) * 0.4))
+    if badge:  # 有钩子句时主题（成语、书名……）做成小标签放在钩子句上方
+        bw = d.textlength(badge, font=bf)
+        d.rounded_rectangle((pad, y, pad + bw + 40, y + int(bf.size * 1.5)), 14, fill=_hex(S.get("mark", "#ffd84a")))
+        d.text((pad + 20, y + int(bf.size * 0.22)), badge, font=bf, fill=(20, 20, 40))
+        y += badge_h
+    if hook_txt:  # 有钩子句：封面上方放大字钩子（重点词黄色），在主页格子里一眼看出讲什么
         for ln in lines:
             x, on = pad, False
             for part in re.split(r"(\*\*)", ln):
@@ -109,10 +145,16 @@ def render(data, w, h, color_of, S=None):
             y += int(hf.size * 1.22)
         y += int(h * 0.03)
     else:
-        d.text((pad, y), sub, font=_f(int(big * 0.36)), fill=(238, 241, 255))
-        y += int(big * 0.36) + int(h * 0.04)
+        d.text((pad, y), sub, font=sf_, fill=(238, 241, 255))
+        y += text_h
+    for row in tag_rows if tags_h else []:  # 只列各段的标签（不剧透标题）
+        for i, tag, x, tw in row:
+            d.rounded_rectangle((x, y, x + tw + 36, y + int(tf.size * 1.45)), int(tf.size * 0.7), fill=_hex(color_of(tag, i)))
+            d.text((x + 18, y + int(tf.size * 0.2)), tag, font=tf, fill=(20, 20, 40))
+        y += int(tf.size * 1.8)
+    rows = [] if amode != "full" else items[:3] if hook_txt else items[:6]
+    numbered = budget.numbering(S) != "none"  # 不要序号的频道（讲故事类），封面上也只画圆点
     # 条目列表：序号圆 + 分类色 + 标题
-    rows = items[:3] if hook_txt else items[:6]
     avail = h - y - int(h * 0.07)
     row_h = min(int(avail / max(len(rows), 1)), int(h * (0.13 if landscape else 0.125)))
     y += max(0, (avail - row_h * len(rows)) // 2)  # 列表在剩余空间里垂直居中
@@ -123,9 +165,10 @@ def render(data, w, h, color_of, S=None):
         r = int(row_h * 0.3)
         d.rounded_rectangle((pad - 12, cy - row_h * 0.42, w - pad + 12, cy + row_h * 0.42), 18, fill=(255, 255, 255, 30))
         d.ellipse((pad + 8, cy - r, pad + 8 + 2 * r, cy + r), fill=c)
-        n = str(i + 1)
-        nf = _f(int(r * 1.2))
-        d.text((pad + 8 + r - d.textlength(n, font=nf) / 2, cy - r * 0.68), n, font=nf, fill=(20, 20, 40))
+        if numbered:
+            n = str(i + 1)
+            nf = _f(int(r * 1.2))
+            d.text((pad + 8 + r - d.textlength(n, font=nf) / 2, cy - r * 0.68), n, font=nf, fill=(20, 20, 40))
         x = pad + 8 + 2 * r + 24
         tag = it.get("tag", "")
         if tag:

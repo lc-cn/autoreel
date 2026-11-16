@@ -42,11 +42,16 @@ const FIELDS = [
   { k: "say_total", label: "整期口播总字数（最少–最多）", type: "range" },
   { k: "numbering", label: "分段序号", type: "numbering", help: "分点讲解用「念出来」；讲故事、一气呵成的用「不要序号」" },
   { k: "max_seconds", label: "时长上限（秒）", type: "number", min: 20, max: 180, help: "超过就要求 AI 删稿；语速是固定的" },
+  { k: "min_seconds", label: "时长下限（秒）", type: "number", min: 10, max: 180, help: "可选。成片短于它就要求 AI 加字，例如平台要求 1 分钟以上时填 62" },
   { sec: "画面文字" },
   { k: "hook", label: "开场形式", type: "hook", help: "开场画面的大字显示什么" },
   { k: "hook_unit", label: "开场单位", type: "text", help: "开场形式为「今日 N 条」时用，例如「条热点」「个知识点」" },
   { k: "label", label: "开场标签", type: "text", help: "开场分类标签前的文字，最多 5 个字，例如「本期涉及」" },
+  { k: "agenda", label: "开场目录", type: "agenda", help: "开场第 1 秒和封面上列不列出各段；列出标题等于提前剧透结论" },
+  { k: "topic_badge", label: "主题小标签", type: "tbadge", help: "有钩子句时，主题（成语、书名）以小标签显示在开场和封面上" },
+  { k: "title_format", label: "发布标题格式", type: "text", help: "可用 {headline} {name} {date} {topic}，留空为「{headline}｜{name}」；超过 30 字时只保留 headline" },
   { k: "src", label: "来源前缀", type: "text", help: "画面底部来源说明，例如「信息来源：公开报道」" },
+  { k: "disclaimer", label: "固定声明", type: "text", help: "可选。每期都写进发布文案、显示在画面来源行，例如「价格以购买页面为准」" },
   { k: "deco", label: "装饰英文", type: "deco", help: "画面左下角的两行大号英文，例如 HOT / NEWS" },
   { sec: "配色" },
   { k: "theme", label: "配色方案", type: "palette" },
@@ -129,10 +134,16 @@ function validate(id) {
     if (!Array.isArray(v) || v.length !== 2 || !(v[0] > 0) || !(v[1] >= v[0])) errs.push(`${FIELDS.find((f) => f.k === k).label} 要填两个数，后一个不小于前一个`);
   }
   if (!(c.max_seconds >= 20)) errs.push("时长上限至少 20 秒");
+  if (c.min_seconds != null && c.max_seconds && c.min_seconds > c.max_seconds) errs.push("时长下限不能大于时长上限");
   if (Array.isArray(c.items) && Array.isArray(c.say_total) && c.max_seconds) {
-    const est = (c.say_total[1] + 50) / 4.6 + 3;
-    if (est > c.max_seconds + 5) warns.push(`按总字数上限估算约 ${Math.round(est)} 秒，超过时长上限 ${c.max_seconds} 秒，AI 会经常被要求删稿`);
+    // 和 tools/budget.py 的估算一致：每字约 0.2 秒（含标点停顿），加开场钩子、结尾互动和关注语，每段间隔 0.3 秒
+    const spc = 0.2024 / ((c.voice && c.voice.speed) || 1);
+    const extra = (n, hook, ask) => (hook + ask + 6 + String(c.slogan || "").length) * spc + (n + 2) * 0.3 + 0.7;
+    const hi = c.say_total[1] * spc + extra(c.items[1], 22, 30), lo = c.say_total[0] * spc + extra(c.items[0], 15, 10);
+    if (hi > c.max_seconds + 2) warns.push(`按总字数上限估算约 ${Math.round(hi)} 秒，超过时长上限 ${c.max_seconds} 秒，AI 会经常被要求删稿`);
+    if (c.min_seconds && lo < c.min_seconds) warns.push(`按总字数下限估算约 ${Math.round(lo)} 秒，短于时长下限 ${c.min_seconds} 秒，AI 会经常被要求加字`);
   }
+  if (c.title_format && !String(c.title_format).includes("{headline}")) errs.push("发布标题格式里必须有 {headline}");
   const v = c.voice || {};
   for (const k of ["mood", "intro_mood", "outro_mood"]) if (v[k] && !MOODS.includes(v[k])) errs.push(`语气「${v[k]}」不在可选范围内`);
   if (v.speed != null && !(v.speed >= 0.8 && v.speed <= 1.25)) errs.push("语速倍率应在 0.8–1.25 之间");
@@ -194,6 +205,18 @@ function fieldHTML(f, c) {
     case "numbering": {
       const N = { spoken: "念出来：配音念「一、二、三」，画面显示序号", visual: "只在画面显示序号，配音不念", none: "不要序号：像讲故事一样接着说" };
       input = `<select id="${id}">${Object.entries(N).map(([k, t]) => `<option value="${k}" ${k === (val || "spoken") ? "selected" : ""}>${esc(t)}</option>`).join("")}</select>`;
+      break;
+    }
+    case "agenda": {
+      const A = { "": "默认（有钩子句时只列标签，没有时列标签和标题）", full: "列出标签和全部标题", tags: "只列标签，不剧透标题", none: "都不列，只有钩子句" };
+      input = `<select id="${id}">${Object.entries(A).map(([k, t]) => `<option value="${k}" ${k === (val || "") ? "selected" : ""}>${esc(t)}</option>`).join("")}</select>`;
+      break;
+    }
+    case "tbadge": {
+      const cur = val === true ? "true" : val === false ? "false" : typeof val === "string" ? "tpl" : "";
+      const A = { "": "默认（开场形式为话题大字的频道显示）", true: "显示", false: "不显示" };
+      if (cur === "tpl") A.tpl = `模板：${val}（在「直接编辑 JSON」里改）`;
+      input = `<select id="${id}">${Object.entries(A).map(([k, t]) => `<option value="${k}" ${k === cur ? "selected" : ""}>${esc(t)}</option>`).join("")}</select>`;
       break;
     }
     case "hook": {
@@ -274,6 +297,10 @@ function bindField(f, id) {
   }
   el.oninput = el.onchange = () => {
     let v = el.value;
+    if (f.type === "tbadge") {
+      if (v === "tpl") return;
+      v = v === "" ? undefined : v === "true";
+    }
     if (f.type === "number") v = v === "" ? undefined : Number(v);
     if (f.type === "list") v = v.split(/[，,\s#]+/).map((x) => x.trim()).filter(Boolean);
     set(c(), f.k, v);

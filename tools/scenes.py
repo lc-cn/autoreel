@@ -6,7 +6,7 @@
   chart     数据图表：{"type":"chart","kind":"bar|line","unit":"亿元","data":[{"label":"2024","value":12.3}],"highlight":2}
   map       地图标注：{"type":"map","places":[{"name":"北京","lon":116.4,"lat":39.9}],"highlight":["China"]}
   timeline  时间线：  {"type":"timeline","events":[{"year":"1954","text":"彗星客机失事"}]}（2–5 条）
-  quote     金句大字：{"type":"quote","text":"……","highlight":"其中要强调的几个字"}
+  quote     金句大字：{"type":"quote","text":"……","highlight":"其中要强调的几个字"}（text 里可以用 | 指定换行，否则按词自动断行）
   asset     你的素材：{"type":"asset","file":"inputs/haowu/cup.jpg"}（图片或视频，路径相对仓库根目录）
 任何镜头都可以加 "bg":"英文关键词"，用实拍素材当背景（asset 除外）。
 
@@ -48,9 +48,93 @@ CSS = """
       .quote .qt { font-size: 84px; font-weight: 900; line-height: 1.32; margin-top: 10px; }
       .quote .qt em { font-style: normal; color: var(--c); }
       .quote .ch { display: inline-block; }
+      .quote .ql { white-space: nowrap; }
       .hide { display: none !important; }
       .credit { position: absolute; right: 190px; top: 1395px; font-size: 22px; color: rgba(255,255,255,0.7); background: rgba(0,0,0,0.35); padding: 4px 10px; border-radius: 8px; }
 """
+
+
+CLOSE = "，。、；：！？,.;:!?…）)」』”’》〉%％"  # 不能出现在行首
+OPEN = "（(「『“‘《〈"                           # 不能出现在行尾
+
+
+def _tokens(text):
+    """把一句话切成不能再拆的小块：词语（rjieba 分词，没装就逐字）、整串数字和英文；
+    标点并到前一个词，开引号、开括号并到后一个词，换行后行首不会是标点。"""
+    import re as _re
+    try:
+        import rjieba
+        cut = lambda x: list(rjieba.cut(x))
+    except Exception:  # noqa: BLE001
+        cut = lambda x: _re.findall(r"[0-9A-Za-z.%％]+|.", x)
+    raw, pos = [], 0  # 数字连同单位整体保留（2026年、240亿、6.3%），其余分词
+    for m in _re.finditer(r"[\d][\d.,]*[%％]?[万亿千百]*[年月日号个点时分秒天倍元种岁米度]?", text):
+        raw += cut(text[pos:m.start()]) if m.start() > pos else []
+        raw.append(m.group())
+        pos = m.end()
+    raw += cut(text[pos:]) if pos < len(text) else []
+    out, pending = [], ""
+    for w in raw:
+        if not w:
+            continue
+        if all(c in CLOSE for c in w) and out:
+            out[-1] += w
+        elif all(c in OPEN for c in w):
+            pending += w
+        else:
+            out.append(pending + w)
+            pending = ""
+    if pending:
+        if out:
+            out[-1] += pending
+        else:
+            out.append(pending)
+    return out
+
+
+def wrap_lines(text, width, max_lines=None):
+    """按词断行：每行不超过 width 个字（一个词比 width 还长时才拆开），行数尽量少、各行长度尽量平均。"""
+    toks = []
+    for w in _tokens(text):
+        while len(w) > width:
+            toks.append(w[:width])
+            w = w[width:]
+        if w:
+            toks.append(w)
+    if not toks:
+        return [text]
+    L = sum(len(w) for w in toks)
+    import math
+    k_min = max(1, math.ceil(L / width))
+    for k in range(k_min, len(toks) + 1):
+        target = L / k
+        # dp[j][m]：前 j 个词排成 m 行的最小代价
+        INF = float("inf")
+        dp = [[(INF, None)] * (k + 1) for _ in range(len(toks) + 1)]
+        dp[0][0] = (0, None)
+        pre = [0]
+        for w in toks:
+            pre.append(pre[-1] + len(w))
+        for j in range(1, len(toks) + 1):
+            for m in range(1, k + 1):
+                best = (INF, None)
+                for a in range(j - 1, -1, -1):
+                    ln = pre[j] - pre[a]
+                    if ln > width:
+                        break
+                    c = dp[a][m - 1][0] + (ln - target) ** 2
+                    if c < best[0]:
+                        best = (c, a)
+                dp[j][m] = best
+        if dp[len(toks)][k][0] < INF:
+            lines, j, m = [], len(toks), k
+            while m:
+                a = dp[j][m][1]
+                lines.append("".join(toks[a:j]))
+                j, m = a, m - 1
+            lines = lines[::-1]
+            return lines[:max_lines] if max_lines else lines
+    return ["".join(toks)]
 
 
 def _text_parts(i, n, it, split_title, small=False):
@@ -318,17 +402,46 @@ def _timeline(i, n, it, shot, s, e, S, ctx, split_title):
     return "".join([meta, title] + rows), js
 
 
+QUOTE_MAX = 40   # 金句最多 40 个字
+QUOTE_W = 9      # 84px 大字在 820px 宽的内容区里一行放 9 个字
+
+
+def quote_lines(raw):
+    """金句断行：text 里写了 | 就按 | 断；否则按词自动断，每行不超过 9 个字，不在词中间断。
+    返回 (各行文字, 字号)。超过 40 个字的部分不显示。"""
+    raw = str(raw)
+    if "|" in raw:
+        lines = [x.strip() for x in raw.split("|") if x.strip()]
+    else:
+        lines = wrap_lines(raw.strip(), QUOTE_W)
+        if len(lines) > 4:  # 太长就小一号字、一行多放几个，最多 4–5 行
+            lines = wrap_lines(raw.strip(), 11)
+    out, left = [], QUOTE_MAX
+    for ln in lines:
+        if left <= 0:
+            break
+        out.append(ln[:left])
+        left -= len(ln)
+    longest = max((len(x) for x in out), default=1)
+    return out, max(56, min(84, int(800 / max(1, longest))))
+
+
 def _quote(i, n, it, shot, s, e, S, ctx, split_title):
-    text = str(shot.get("text") or it["title"].replace("|", ""))[:40]
+    lines, fs = quote_lines(shot.get("text") or it["title"].replace("|", ""))
+    text = "".join(lines)
     hl = str(shot.get("highlight") or "")
     ctx.text(text, "“”")
-    body = ""
     a = text.find(hl) if hl else -1
-    for k, ch in enumerate(text):
-        inner = f'<span class="ch">{E(ch)}</span>'
-        body += f"<em>{inner}</em>" if a >= 0 and a <= k < a + len(hl) else inner
+    body, k = "", 0
+    for ln in lines:
+        row = ""
+        for ch in ln:
+            inner = f'<span class="ch">{E(ch)}</span>'
+            row += f"<em>{inner}</em>" if a >= 0 and a <= k < a + len(hl) else inner
+            k += 1
+        body += f'<div class="ql">{row}</div>'
     meta = f'<div class="meta top" id="s{i}-meta"><span class="tag">{E(it["tag"])}</span><span class="idx">{i + 1:02d} / {n:02d}</span></div>'
-    html_ = f'{meta}<div class="quote" id="s{i}-q"><div class="qm">“</div><div class="qt">{body}</div></div>'
+    html_ = f'{meta}<div class="quote" id="s{i}-q"><div class="qm">“</div><div class="qt" style="font-size:{fs}px">{body}</div></div>'
     js = [f'tl.fromTo("#s{i}-meta", {{y: 40, opacity: 0}}, {{y: 0, opacity: 1, duration: 0.35, ease: "power3.out"}}, {T(s + 0.05)});',
           f'tl.fromTo("#s{i}-q .qm", {{scale: 0.4, opacity: 0, transformOrigin: "0% 100%"}}, {{scale: 1, opacity: 0.85, duration: 0.4, ease: "back.out(2)"}}, {T(s + 0.1)});',
           f'tl.fromTo("#s{i}-q .ch", {{opacity: 0, y: 30}}, {{opacity: 1, y: 0, duration: 0.25, ease: "power2.out", stagger: {T(min(0.06, max(0.02, (e - s - 1.2) / max(1, len(text)) / 2)))}}}, {T(s + 0.3)});',

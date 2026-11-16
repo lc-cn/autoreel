@@ -35,6 +35,7 @@ import soundfile as sf
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import textnorm  # noqa: E402
+import budget  # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 SR = 24000  # 统一输出采样率
@@ -373,7 +374,8 @@ def _jobs(lines, provider, speed, seed=0):
         mood = ln.get("mood") or "平稳"
         base = MOODS.get(mood, MOODS["平稳"])[2] * PACE.get(ln.get("pace") or "中", 1.0)
         for ci, raw in enumerate(_chunks(ln["text"])):
-            say = textnorm.spoken(raw)  # 稿子按字幕写，这里转成读法（数字、日期、百分号……）
+            # 稿子按字幕写，这里转成读法（数字、日期、百分号……）；| ｜ 这类排版竖线不送进配音（夹在字中间的换成逗号停顿）
+            say = textnorm.spoken(budget.strip_layout(raw))
             jobs.append({"line": li, "raw": raw, "say": say, "text": render_text(say, provider), "mood": mood,
                          "speed": round(base * speed, 3), "seed": seed + li * 31 + ci})
     return jobs

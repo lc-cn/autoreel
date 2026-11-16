@@ -10,11 +10,14 @@
 退出码：0 没有错误（可能有提醒），1 有错误。
 """
 import json
+import math
 import os
 import re
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, HERE)
+import budget  # noqa: E402
 ROOT = os.path.abspath(os.environ.get("AUTOREEL_ROOT") or os.path.join(HERE, ".."))
 HEX = re.compile(r"^#[0-9a-fA-F]{6}$")
 HM = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
@@ -114,15 +117,56 @@ def check(cid):
         if not (isinstance(v, list) and len(v) == 2 and all(isinstance(x, int) for x in v) and lo <= v[0] <= v[1] <= hi):
             errs.append(f"{k} 应为 [最小, 最大]，范围 {lo}–{hi}")
     ms = c.get("max_seconds")
+    mn = c.get("min_seconds")
     if not (isinstance(ms, (int, float)) and 20 <= ms <= 180):
         errs.append("max_seconds 应在 20–180 之间")
-    elif isinstance(c.get("items"), list) and isinstance(c.get("say_chars"), list) and len(c["items"]) == 2 and len(c["say_chars"]) == 2:
-        chars = c["items"][1] * c["say_chars"][1]
-        if isinstance(c.get("say_total"), list) and len(c["say_total"]) == 2:
-            chars = min(chars, c["say_total"][1])
-        est = (chars + 50) / 5.0 + 3  # 实测约 5 字/秒；开场 + 结尾约 50 字，句间停顿约 3 秒
-        if est > ms + 5:
-            warns.append(f"按最多条数和字数估算约 {est:.0f} 秒，超过 max_seconds={ms}，写稿时会被迫删减，建议调小字数或条数")
+        ms = None
+    if mn is not None and not (isinstance(mn, (int, float)) and 10 <= mn <= 180):
+        errs.append("min_seconds（可选）是成片最短秒数，应在 10–180 之间")
+        mn = None
+    if mn is not None and ms is not None and mn > ms:
+        errs.append(f"min_seconds={mn} 大于 max_seconds={ms}")
+        mn = None
+    if ms is not None and isinstance(c.get("items"), list) and isinstance(c.get("say_chars"), list) and len(c["items"]) == 2 and len(c["say_chars"]) == 2:
+        # 和 make.py 配音前预检同一套估算（tools/budget.py）：含开场 hook、结尾 ask 和选项、关注语
+        lo, hi = budget.channel_range(c)
+        spc = budget.sec_per_char(float((c.get("voice") or {}).get("speed") or 1.0))
+        if hi > ms + 2:
+            warns.append(f"按字数上限估算约 {hi:.0f} 秒，超过 max_seconds={ms}，写到上限会被要求删稿；"
+                         f"把 say_total 上限（或条数 × 每段字数上限）调小约 {math.ceil((hi - ms) / spc)} 字，或放宽 max_seconds")
+        if mn is not None and lo < mn:
+            warns.append(f"按字数下限估算约 {lo:.0f} 秒，短于 min_seconds={mn}，按下限写会被要求加字；"
+                         f"把 say_total 下限调大约 {math.ceil((mn + 1 - lo) / spc)} 字")
+        if mn is not None and hi < mn:
+            warns.append(f"字数写满也只有约 {hi:.0f} 秒，达不到 min_seconds={mn}：say_total / say_chars 上限要调大")
+    if c.get("agenda") is not None and c["agenda"] not in budget.AGENDA_MODES:
+        errs.append("agenda 只能是 full（开场列标签和全部标题）、tags（只列标签）、none（都不列）；不写时有钩子句用 tags")
+    tb = c.get("topic_badge")
+    if tb is not None and not isinstance(tb, (bool, str)):
+        errs.append("topic_badge 应为 true / false，或带 {topic} 的模板文字，例如 \"今日成语 · {topic}\"")
+    elif isinstance(tb, str) and (set(re.findall(r"\{(\w*)\}", tb)) - {"topic"} or "{topic}" not in tb):
+        errs.append("topic_badge 模板里要有 {topic}，且只能用 {topic}")
+    tf = c.get("title_format")
+    if tf is not None:
+        if not isinstance(tf, str) or "{headline}" not in tf:
+            errs.append("title_format 应为文字模板，且必须包含 {headline}，例如 \"{headline}｜{name}\"")
+        else:
+            bad = set(re.findall(r"\{(\w*)\}", tf)) - set(budget.TITLE_FIELDS)
+            if bad:
+                errs.append(f"title_format 里有不支持的占位符：{', '.join(bad)}（可用：{', '.join(budget.TITLE_FIELDS)}）")
+            else:
+                room = budget.TITLE_LIMIT - len(tf.replace("{headline}", "").format(name=c.get("name", ""), date="11月16日", topic="示例主题"))
+                if room < 14:
+                    warns.append(f"title_format 除 headline 外约占 {budget.TITLE_LIMIT - room} 字，标题上限 30 字，headline 只剩 {room} 字；超出时会只保留 headline")
+    for k in ("disclaimer",):
+        if c.get(k) is not None and not (isinstance(c[k], str) and c[k].strip()):
+            errs.append("disclaimer 应为一句文字，例如「价格以购买页面为准」")
+        elif isinstance(c.get(k), str) and len(budget.display(c[k])) > 24:
+            warns.append("disclaimer 超过 24 个字，画面上的来源行会被缩小，建议精简")
+    if c.get("disclaimer_say") is not None and not isinstance(c["disclaimer_say"], bool):
+        errs.append("disclaimer_say 应为 true 或 false")
+    if c.get("disclaimer_say") and not c.get("disclaimer"):
+        warns.append("disclaimer_say 为 true 但没有写 disclaimer")
     tags = c.get("hashtags")
     if not (isinstance(tags, list) and 1 <= len(tags) <= 5 and all(isinstance(t, str) and t and not t.startswith("#") for t in tags)):
         errs.append("hashtags 应为 1–5 个不带 # 的话题")
