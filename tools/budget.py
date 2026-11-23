@@ -153,7 +153,7 @@ def outro_text(data, S):
     if str(data.get("ask") or "").strip():
         ask = data["ask"].strip()
         opts = [str(x).strip() for x in (data.get("ask_options") or [])][:2]
-        pick = f"{opts[0]}的打A，{opts[1]}的打B。" if len(opts) == 2 else ""
+        pick = f"{opts[0]}的打A，{opts[1]}的打B。" if len(opts) == 2 else "评论区告诉我。"
         disc = _sentence(S.get("disclaimer")) if S.get("disclaimer_say") else ""
         return f"{ask}{'' if ask[-1:] in '？?。！!' else '。'}{pick}{disc}关注我，{follow_text(S)}。"
     out = S.get("outro", "")

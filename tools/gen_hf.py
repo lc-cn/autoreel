@@ -101,7 +101,7 @@ def make_caption(data):
         out.append(f"⚠️ {budget.disclaimer(S)}")
     if data.get("ask"):
         o = ask_options(data)
-        out.append(f"💬 {tts.display_text(data['ask'])}" + (f" 评论区打 A（{o[0]}）或 B（{o[1]}）" if o else ""))
+        out.append(f"💬 {tts.display_text(data['ask'])}" + (f" 评论区打 A（{o[0]}）或 B（{o[1]}）" if o else " 评论区告诉我"))
     tags = (data.get("hashtags") or S["hashtags"] + categories(items))[:5]
     out.append(" ".join("#" + t.lstrip("#") for t in tags))
     return "\n".join(out)
