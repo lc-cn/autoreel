@@ -11,18 +11,18 @@
   "intro": "{name}。今天的成语是{topic_say}。",
   "outro": "学会了吗？关注我，每天一个成语，一年多懂三百多个。",
   "items": [
-    2,
+    3,
     3
   ],
   "say_chars": [
-    30,
-    45
+    40,
+    55
   ],
   "say_total": [
-    80,
-    115
+    120,
+    160
   ],
-  "max_seconds": 36,
+  "max_seconds": 48,
   "numbering": "none",
   "hashtags": [
     "每天一个成语",
