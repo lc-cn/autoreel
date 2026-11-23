@@ -111,7 +111,7 @@ def make_caption(data):
     out.append(f"📌 {kind}：" + ("、".join(srcs) if srcs else default) + "（据公开资料整理）")
     if data.get("ask"):
         o = ask_options(data)
-        out.append(f"💬 {tts.display_text(data['ask'])}" + (f" 评论区打 A（{o[0]}）或 B（{o[1]}）" if o else " 评论区告诉我"))
+        out.append(f"💬 {tts.display_text(data['ask'])}" + (f" 评论区打 A（{o[0]}）或 B（{o[1]}）" if o else ""))
     tags = (data.get("hashtags") or S["hashtags"] + categories(items))[:5]
     out.append(" ".join("#" + t.lstrip("#") for t in tags))
     return "\n".join(out)
@@ -495,7 +495,6 @@ def main():
         ask = data["ask"].strip()
         opts = [str(x).strip() for x in (data.get("ask_options") or [])][:2]
         pick = f"{opts[0]}的打A，{opts[1]}的打B。" if len(opts) == 2 else ""
-        pick = pick or "评论区告诉我。"
         data["outro"] = f"{ask}{'' if ask[-1:] in '？?。！!' else '。'}{pick}关注我，{follow_text(S)}。"
     data.setdefault("outro", S["outro"])
     vs = S.get("voice") or {}  # 频道的配音语气：mood 默认语气，intro_mood / outro_mood 开场和结尾
