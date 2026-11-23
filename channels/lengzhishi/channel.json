@@ -11,18 +11,18 @@
   "intro": "{name}。今天聊聊{topic_say}。",
   "outro": "涨知识了吗？关注我，每天一分钟，多懂一点。",
   "items": [
-    3,
-    4
+    2,
+    3
   ],
   "say_chars": [
-    35,
-    50
+    30,
+    45
   ],
   "say_total": [
-    120,
-    170
+    80,
+    115
   ],
-  "max_seconds": 48,
+  "max_seconds": 36,
   "numbering": "none",
   "hashtags": [
     "冷知识",
