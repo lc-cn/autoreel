@@ -84,5 +84,10 @@
     "mood": "平稳",
     "intro_mood": "轻快",
     "outro_mood": "温暖"
-  }
+  },
+  "formats": [
+    "classic",
+    "immersive",
+    "kinetic"
+  ]
 }

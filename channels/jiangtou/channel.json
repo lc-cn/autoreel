@@ -83,5 +83,10 @@
     "mood": "严肃",
     "intro_mood": "悬念",
     "outro_mood": "温暖"
-  }
+  },
+  "formats": [
+    "classic",
+    "immersive",
+    "kinetic"
+  ]
 }
