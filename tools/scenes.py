@@ -97,7 +97,7 @@ class Ctx:
         except Exception as ex:  # noqa: BLE001
             self.warnings.append(f"素材模块不可用：{ex}")
             return None
-        where = "开场" if i == "h" else f"第 {int(str(i).split('_')[0]) + 1} 段"
+        where = "开场" if str(i).split("_")[0] == "h" else f"第 {int(str(i).split('_')[0]) + 1} 段"
         if not footage.available():
             self.warnings.append("没有 PEXELS_API_KEY / PIXABAY_API_KEY，实拍镜头改为文字镜头")
             return None
