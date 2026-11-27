@@ -29,13 +29,40 @@ def formats_of(S):
     return fs or [S.get("format") if S.get("format") in NAMES else "classic"]
 
 
+MIN_WEIGHT = 0.15  # 按数据调整比例时，每种形式至少保留的份额（继续测，避免过早下结论）
+
+
+def weights_of(S):
+    """channel.json 的 format_weights（每周复盘按数据写入）；没有就平均。"""
+    fs = formats_of(S)
+    w = S.get("format_weights") or {}
+    raw = [max(float(w.get(f, 0) or 0), 0.0) for f in fs] if w else [1.0] * len(fs)
+    if sum(raw) <= 0:
+        raw = [1.0] * len(fs)
+    tot = sum(raw)
+    p = [max(x / tot, MIN_WEIGHT) for x in raw]
+    tot = sum(p)
+    return fs, [x / tot for x in p]
+
+
 def format_for(S, date):
-    """date：datetime.date 或 YYYY-MM-DD。"""
+    """date：datetime.date 或 YYYY-MM-DD。
+    没有权重时按天依次轮换（不同频道错开）；有权重时按权重抽，但同一天同一频道的结果固定（可复现，补做也一样）。"""
     if isinstance(date, str):
         date = datetime.date.fromisoformat(date)
     fs = formats_of(S)
-    off = sum(str(S.get("id", "")).encode()) % len(fs)
-    return fs[(date.toordinal() + off) % len(fs)]
+    if not S.get("format_weights"):
+        off = sum(str(S.get("id", "")).encode()) % len(fs)
+        return fs[(date.toordinal() + off) % len(fs)]
+    import hashlib
+    fs, p = weights_of(S)
+    u = int(hashlib.md5(f"{S.get('id', '')}|{date.isoformat()}".encode()).hexdigest()[:8], 16) / 0xFFFFFFFF
+    acc = 0.0
+    for f, x in zip(fs, p):
+        acc += x
+        if u < acc:
+            return f
+    return fs[-1]
 
 
 def main():
@@ -48,7 +75,8 @@ def main():
     f = format_for(S, date)
     print(f"{ch} {date}：{f}（{NAMES[f]}）。在 script.json 里写 \"format\": \"{f}\"。")
     print("写法要点：" + HINTS[f])
-    print("本频道轮换的形式：" + "、".join(f"{x}（{NAMES[x]}）" for x in formats_of(S)))
+    fs, p = weights_of(S)
+    print("本频道轮换的形式：" + "、".join(f"{x}（{NAMES[x]}）{round(w * 100)}%" for x, w in zip(fs, p)) + ("（按数据调整过）" if S.get("format_weights") else "（平均轮换）"))
 
 
 if __name__ == "__main__":
