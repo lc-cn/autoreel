@@ -9,6 +9,7 @@ sys.path.insert(0, HERE)
 import tts
 import scenes as SC
 import budget
+import formats as FM
 
 COLORS = {"国际": "#ff5c5c", "国内": "#ff8a4c", "时政": "#ff8a4c", "外交": "#9a7cff", "财经": "#ffb840",
           "科技": "#40c8ff", "体育": "#4fdc8c", "娱乐": "#ff6eb4", "社会": "#f2d14b", "健康": "#5ee0c8",
@@ -238,6 +239,10 @@ def subset_font(chars, out):
 def build(data, times, dur, proj, spoken):
     items = data["items"]; n = len(items)
     S = series(data)
+    fmt = FM.pick(data, S)
+    if fmt != "classic":  # 其他视频形式（实拍沉浸 / 大字快剪 / 答题挑战）见 formats.py
+        build.ctx, build.events, build.kinds = FM.build(fmt, sys.modules[__name__], data, times, dur, proj, spoken)
+        return
     m = re.search(r"(\d+)月(\d+)日", data["date"])
     hook = S.get("hook", "count")
     hookline = tts.display_text(data.get("hook") or "").strip()
@@ -499,6 +504,9 @@ def main():
     S = series(data)
     target = float(S.get("max_seconds", 90)) + 10  # 正常语速读完即可；超出上限时由写稿环节删短
     # 开场：有钩子句就直接念钩子（频道名和日期只在画面顶部显示），没有才用频道的开场白模板
+    fmt = FM.pick(data, S)
+    if fmt == "quiz":  # 答题挑战：开场念题目和选项，念完留 3 秒给观众想
+        data["intro"] = FM.quiz_intro(sys.modules[__name__], data)
     # 结尾：有 ask 就先抛互动问题，再请关注；拼法和 make.py 的时长预检共用 budget.py
     data["intro"] = budget.intro_text(data, S)
     data["outro"] = budget.outro_text(data, S)
@@ -515,6 +523,14 @@ def main():
     if vs.get("volc_speaker"):
         voice.setdefault("volcengine", {})["speaker"] = vs["volc_speaker"]
     audio, sr, times, speed = tts.synth(lines, voice, target)
+    if fmt == "quiz" and len(times) > 1:  # 在题目和讲解之间插入静音，画面上倒数 3、2、1
+        import numpy as np
+        gap = FM.QUIZ_GAP
+        cut = int((times[0][1] + times[1][0]) / 2 * sr)
+        audio = np.concatenate([audio[:cut], np.zeros(int(gap * sr), dtype=audio.dtype), audio[cut:]])
+        times = [times[0]] + [(a + gap, b + gap) for a, b in times[1:]]
+        last = tts.synth.last or {}
+        last["sents"] = [(li, t, a + gap, b + gap) if li >= 1 else (li, t, a, b) for li, t, a, b in last.get("sents") or []]
     lines = [ln["text"] for ln in lines]
     dur = round(len(audio) / sr + 0.5, 2)
     os.makedirs(f"{proj}/assets", exist_ok=True)
@@ -548,9 +564,10 @@ def main():
         print(f"提醒：{w}")
     if ctx:
         print("分镜：" + " / ".join(f"{i + 1}.{k}" for i, k in enumerate(build.kinds)))
-    meta = {"title": budget.publish_title(data, S),  # channel.json 的 title_format，默认「headline｜频道名」 "desc": cap.rsplit("\n", 1)[0], "tags": tags[:5],
+    # 标题格式见 channel.json 的 title_format，默认「headline｜频道名」
+    meta = {"title": budget.publish_title(data, S), "desc": cap.rsplit("\n", 1)[0], "tags": tags[:5],
             "declaration": (CONFIG.get("publish") or {}).get("declaration", "内容由AI生成"), "collection": S.get("collection", S["name"]),
-            "channel": S["id"]}
+            "channel": S["id"], "format": fmt}
     # 竖封面 3:4 + 横封面 4:3（JPEG，base64 内嵌在发布信息里，插件解出来上传）
     try:
         from make_cover import covers
