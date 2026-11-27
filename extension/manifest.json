@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "自影 AutoReel · 自动成片与多平台发布",
-  "version": "2.7.1",
+  "version": "2.8.0",
   "description": "从你的 GitHub 仓库取每期成品，自动发布到抖音、视频号、快手；扫码登录、登录保活、验证提醒、模板化消息推送。",
   "icons": {
     "16": "icons/16.png",

@@ -565,7 +565,17 @@ def main():
         print(f"提醒：{w}")
     if ctx:
         print("分镜：" + " / ".join(f"{i + 1}.{k}" for i, k in enumerate(build.kinds)))
-    meta = {"title": f"{S['name']}{md}｜{head}"[:30], "desc": cap.rsplit("\n", 1)[0], "tags": tags[:5],
+    prefix = f"{S['name']}{md}"
+    if S.get("title_style") == "number":  # 系列编号：「一分钟冷知识 第23期｜…」，期数按发布记录里这个频道之前发过的期数 +1
+        try:
+            import history as HI
+            dm = re.search(r"(\d{4})年(\d+)月(\d+)日", data["date"])
+            iso = f"{dm[1]}-{int(dm[2]):02d}-{int(dm[3]):02d}" if dm else "9999"
+            no = 1 + len({r.get("date") for r in HI.load() if r.get("channel") == S["id"] and r.get("date", "") < iso})
+            prefix = f"{S['name']} 第{no}期"
+        except Exception as e:
+            print(f"提醒：系列编号没算出来，标题用日期（{e}）")
+    meta = {"title": f"{prefix}｜{head}"[:30], "desc": cap.rsplit("\n", 1)[0], "tags": tags[:5],
             "declaration": (CONFIG.get("publish") or {}).get("declaration", "内容由AI生成"), "collection": S.get("collection", S["name"]),
             "channel": S["id"], "format": fmt}
     # 竖封面 3:4 + 横封面 4:3（JPEG，base64 内嵌在发布信息里，插件解出来上传）

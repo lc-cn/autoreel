@@ -798,7 +798,11 @@ async function getChannels(force = false) {
     for (const id of cfg.channels || []) {
       try {
         const ch = await raw(`channels/${id}/channel.json`);
-        list.push({ key: id, name: ch.name || id, notBefore: (ch.schedule && ch.schedule.publish) || "00:00", to: Array.isArray(ch.publish_to) ? ch.publish_to : null });
+        const sc = ch.schedule || {};
+        // 测试发布时间：填了 publish_alt 就按天轮换（双日用 publish，单日用 publish_alt），复盘时比较时段
+        const ord = Math.floor(Date.parse(beijing().date + "T00:00:00Z") / 864e5);
+        const at = sc.publish_alt && ord % 2 === 1 ? sc.publish_alt : (sc.publish || "00:00");
+        list.push({ key: id, name: ch.name || id, notBefore: at, to: Array.isArray(ch.publish_to) ? ch.publish_to : null });
       } catch (e) {
         await log(`读取频道 ${id} 失败：${e.message}`);
       }
@@ -1010,6 +1014,7 @@ async function keepAlive(force = false) {
 // 读法有两种：页面上的表格（按列名对应），以及页面加载的数据（找标题和发布记录对得上的作品，取其中的数字）。
 // 都读不到时把页面结构写进 history/数据采集诊断.json（只有列名、字段名和接口路径，不含账号信息），方便修。
 const STATS_URL = "https://creator.douyin.com/creator-micro/data-center/content";
+const MANAGE_URL = "https://creator.douyin.com/creator-micro/content/manage"; // 作品管理：有点赞、评论、分享等
 const STATS_FILE = "history/数据.jsonl";
 const STATS_DIAG = "history/数据采集诊断.json";
 const COLS = [["title", /^(作品|作品名称|视频|标题|作品标题|内容)$/], ["published", /发布时间|发布日期/], ["plays", /播放(量|次数)?$|^播放/], ["bounce2s", /2\s*[sS秒].*跳出/],
@@ -1139,7 +1144,7 @@ async function collectStats({ manual = false } = {}) {
     if (src.tabId !== tabId) return;
     if (method === "Network.responseReceived" && /json/.test(p.response.mimeType || "") && /douyin\.com/.test(p.response.url)) {
       seen.push({ id: p.requestId, path: new URL(p.response.url).pathname });
-    } else if (method === "Network.loadingFinished" && seen.some((x) => x.id === p.requestId) && bodies.length < 80) {
+    } else if (method === "Network.loadingFinished" && seen.some((x) => x.id === p.requestId) && bodies.length < 200) {
       try {
         const r = await chrome.debugger.sendCommand({ tabId }, "Network.getResponseBody", { requestId: p.requestId });
         const txt = r.base64Encoded ? atob(r.body) : r.body;
@@ -1172,6 +1177,14 @@ async function collectStats({ manual = false } = {}) {
       if (!r || !r.result || !r.result.hasNext) break;
       await sleepMs(3500);
     }
+    // 作品管理页：点赞、评论、分享（数据中心的作品分析里没有这些）；往下滚几次加载更多作品
+    await setRunning({ slot: "作品数据", platform: "抖音", stage: "读取作品管理" });
+    await chrome.tabs.update(tabId, { url: MANAGE_URL });
+    await sleepMs(12000);
+    for (let i = 0; i < 6; i++) {
+      await chrome.scripting.executeScript({ target: { tabId }, func: () => { const el = [...document.querySelectorAll("*")].filter((e) => e.scrollHeight > e.clientHeight + 200 && /auto|scroll/.test(getComputedStyle(e).overflowY)).sort((a, b) => b.scrollHeight - a.scrollHeight)[0] || document.scrollingElement; el.scrollTop = el.scrollHeight; } }).catch(() => {});
+      await sleepMs(2500);
+    }
     // 发布记录里的标题：用来在页面数据里认出我们的作品
     const hist = (await repoText("history/发布记录.jsonl")).text.split("\n").filter(Boolean).map((l) => { try { return JSON.parse(l); } catch (_) { return null; } }).filter(Boolean);
     const titles = [...new Set(hist.map((h) => h.title).filter(Boolean))];
@@ -1181,6 +1194,9 @@ async function collectStats({ manual = false } = {}) {
     if (!rows.some((r) => Object.values(r.metrics).some((v) => v != null))) {
       rows = fromJson.rows;
       source = "页面数据";
+    } else { // 表格为主，页面数据里多出来的指标补进去
+      const byT = new Map(fromJson.rows.map((r) => [normTitle(r.title), r]));
+      for (const r of rows) { const j = byT.get(normTitle(r.title)); if (j) { for (const [k, v] of Object.entries(j.metrics)) if (r.metrics[k] == null) r.metrics[k] = v; r.raw = j.raw; } }
     }
     result.n = rows.length;
     result.source = rows.length ? source : "";

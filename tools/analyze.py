@@ -77,7 +77,14 @@ def load(today):
         if r.get("raw"):
             met.update(from_raw(r["raw"]))
         name = (re.match(r"^(.+?)\d{1,2}月\d{1,2}日", str(r.get("title"))) or [None, h.get("channel", "其他")])[1]
-        rows.append({"title": r.get("title"), "date": date, "channel": h.get("channel") or name, "name": name,
+        hour = None  # 实际发布时间：抖音数据里的 create_time（时间戳）或 published（「2026-11-22 09:08」）
+        ct = (r.get("raw") or {}).get("create_time")
+        if isinstance(ct, (int, float)) and ct > 1e9:
+            hour = datetime.datetime.fromtimestamp(ct, datetime.timezone(datetime.timedelta(hours=8))).hour
+        else:
+            pm = re.search(r"\s(\d{1,2}):\d{2}", str(r.get("published") or ""))
+            hour = int(pm[1]) if pm else None
+        rows.append({"hour": hour, "title": r.get("title"), "date": date, "channel": h.get("channel") or name, "name": name,
                      "format": h.get("format") or "classic", "hook_type": h.get("hook_type") or "未标注", "seconds": h.get("seconds"), "m": met})
     return rows
 
@@ -179,6 +186,12 @@ def main():
     md.append("\n## 钩子类型（最近 28 天）\n")
     hg = [(h, agg([r for r in recent if r["hook_type"] == h])) for h in sorted({r["hook_type"] for r in recent})]
     md.append(table("钩子类型", hg) + "\n" + compare([x for x in hg if x[0] != "未标注"]) + "\n")
+    md.append("\n## 发布时段（最近 28 天，各频道分开看；频道配了「测试发布时间」才有对比）\n")
+    slot = lambda h: "—" if h is None else ("早上（6–10 点）" if h < 10 else "中午（10–14 点）" if h < 14 else "下午（14–18 点）" if h < 18 else "晚上（18 点后）")
+    for c in chans:
+        sg = [(s_, agg([r for r in recent if r["channel"] == c and slot(r["hour"]) == s_])) for s_ in sorted({slot(r["hour"]) for r in recent if r["channel"] == c})]
+        if len(sg) > 1:
+            md.append(f"\n**{name[c]}**\n\n" + table("时段", sg) + "\n" + compare(sg) + "\n")
     md.append("\n## 2 秒跳出率最低 / 最高的 5 期（最近 28 天，供复盘找共同点）\n")
     rk = sorted([r for r in recent if isinstance(r["m"].get("bounce2s"), (int, float))], key=lambda r: r["m"]["bounce2s"])
     for lab, part in (("最低", rk[:5]), ("最高", rk[-5:][::-1])):

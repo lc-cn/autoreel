@@ -34,6 +34,7 @@ const FIELDS = [
   { k: "collection", label: "抖音合集名", type: "text" },
   { sec: "时间（北京时间）" },
   { k: "schedule.publish", label: "发布时间", type: "time", help: "插件到这个时间才发布；00:00 表示视频到了就发" },
+  { k: "schedule.publish_alt", label: "测试发布时间（可选）", type: "time", help: "填了就和上面的发布时间按天轮换（单日一个、双日一个），每周复盘比较哪个时段好；不测就留空。要晚于「开始制作」1 小时以上" },
   { k: "schedule.make", label: "开始制作", type: "time", help: "只是记录。改了要在你的 AI 工具里同步修改定时任务" },
   { k: "schedule.days_ahead", label: "每次多做几天", type: "number", min: 0, max: 3, help: "1 = 每次做今天和明天两期，留一天余量" },
   { sec: "篇幅" },

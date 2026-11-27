@@ -15,7 +15,7 @@ import subprocess
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-ROOT = os.path.dirname(HERE)
+ROOT = os.path.abspath(os.environ.get("AUTOREEL_ROOT") or os.path.dirname(HERE))
 FILE = os.path.join(ROOT, "history", "发布记录.jsonl")
 
 
