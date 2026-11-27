@@ -9,7 +9,8 @@
   "src": "资料来源：品牌官方资料",
   "hook": "topic",
   "intro": "{name}。今天说说{topic_say}，{n}个看点一次讲清楚。",
-  "outro": "以上信息来自官方资料，购买前请以实际页面为准。关注我，发现更多好物。",
+  "outro": "关注我，发现更多好物。",
+  "disclaimer": "价格和规格以购买页面为准",
   "items": [
     3,
     4
@@ -20,7 +21,7 @@
   ],
   "say_total": [
     120,
-    170
+    155
   ],
   "max_seconds": 48,
   "numbering": "visual",
