@@ -517,7 +517,7 @@ $("save").onclick = async () => {
   const out = { ...S };
   delete out.webhook; // 旧版字段，已迁移为推送渠道
   out.ident = ((await chrome.storage.local.get("settings")).settings || {}).ident || {};
-  { const cur = (await chrome.storage.local.get("settings")).settings || {}; if ("statsCollect" in cur) out.statsCollect = cur.statsCollect; } // 「数据」页的采集开关直接保存，以存储里的为准 // 账号记录由后台维护，以存储里最新的为准
+  { const cur = (await chrome.storage.local.get("settings")).settings || {}; if ("statsCollect" in cur) out.statsCollect = cur.statsCollect; if ("autoComment" in cur) out.autoComment = cur.autoComment; } // 「数据」页的采集开关直接保存，以存储里的为准 // 账号记录由后台维护，以存储里最新的为准
   await chrome.storage.local.set({ settings: out });
   dirty = false;
   $("saveState").textContent = `已保存 · ${nowStamp().slice(11, 16)}`;

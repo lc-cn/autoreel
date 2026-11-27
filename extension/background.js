@@ -461,6 +461,8 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
         return reply({ ok: true });
       case "collectStats":
         return reply(await collectStats({ manual: true }));
+      case "commentNow":
+        return reply(await maybeComment({ force: true }));
       case "testRoutes": {
         // 用最新一期视频的前 2MB 测每条下载线路的速度
         try {
@@ -664,6 +666,11 @@ async function recordResult(platform, slot, tag, meta, res) {
   if (res.ok) {
     st.published = true;
     st.last = beijing().stamp;
+    st.at = Date.now();
+    if (platform === "douyin") { // 发布后自动评论（开关在「数据」页）：记下要发的内容，约 10 分钟后由 maybeComment 发
+      const ask = ((meta.desc || "").split("\n").find((l) => l.startsWith("💬")) || "").replace(/^💬\s*/, "").trim();
+      if (ask) st.comment = { text: ask, title: meta.title, tries: 0 };
+    }
     await saveState(state);
     await log(`✅ ${who}「${slot.name}」发布成功：${meta.title}`);
     await writeStatus(tag, platform, "published", "", st.attempts, key, info);
@@ -1249,6 +1256,109 @@ async function maybeCollectStats() {
   await collectStats();
 }
 
+// ───────── 发布后自动评论（只评论，网页端不能置顶）─────────
+// 抖音网页端没有「置顶评论」入口（创作者中心和 douyin.com 都没有），只能在 App 里置顶；插件发完评论后提醒你去 App 置顶。
+// 在「创作者中心 → 互动管理 → 评论管理」里操作：核对选中的作品 → 写入本期结尾的互动问题 → 发送 → 在评论列表里确认。
+const COMMENT_URL = "https://creator.douyin.com/creator-micro/interactive/comment";
+const COMMENT_DELAY_MS = 10 * 60000; // 刚发布的作品可能还在审核，评论区未开放
+const COMMENT_TRIES = 3;
+
+async function commentOnPage(text, key) { // 在抖音页面里运行
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const txt = (e) => (e.innerText || e.textContent || "").replace(/\s+/g, " ").trim();
+  const flat = (t) => String(t).replace(/\s+/g, "");
+  const waitFor = async (fn, ms = 20000) => { const t = Date.now(); while (Date.now() - t < ms) { const v = fn(); if (v) return v; await sleep(400); } return null; };
+  const editor = () => [...document.querySelectorAll('[contenteditable="true"]')].find((e) => e.offsetParent !== null);
+  if (!(await waitFor(editor, 25000))) return { ok: false, reason: "没找到评论输入框（页面可能改版，或抖音没登录）" };
+  await sleep(1500);
+  const comments = () => [...document.querySelectorAll('[class*="comment-content-text-"]')].map((e) => flat(txt(e)));
+  const pageHas = () => flat(txt(document.body)).includes(key);
+  if (!pageHas()) { // 默认选中最新作品；不是这条就到「选择作品」里找
+    const btn = [...document.querySelectorAll("button")].find((b) => txt(b) === "选择作品");
+    if (!btn) return { ok: false, reason: "页面上没找到「选择作品」" };
+    btn.click();
+    const sheet = await waitFor(() => document.querySelector(".douyin-creator-interactive-sidesheet"), 8000);
+    if (!sheet) return { ok: false, reason: "作品列表没打开" };
+    await sleep(1500);
+    const item = [...sheet.querySelectorAll('[class*="card-"]')].find((c) => flat(txt(c)).includes(key));
+    if (!item) { document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); return { ok: false, reason: "作品列表里还没有这条作品（可能还在审核）" }; }
+    item.click();
+    await sleep(3500);
+    if (!pageHas()) return { ok: false, reason: "切换作品后页面上没看到这条作品的标题" };
+  }
+  if (comments().includes(flat(text))) return { ok: true, already: true };
+  const ed = editor();
+  ed.focus();
+  document.execCommand("insertText", false, text);
+  await sleep(800);
+  const send = () => [...document.querySelectorAll('[class*="footer-"] button')].find((b) => txt(b) === "发送" && !b.disabled && !/button-disabled/.test(b.className));
+  const b = await waitFor(send, 6000);
+  if (!b) return { ok: false, reason: "写入文字后「发送」按钮没有变成可用" };
+  b.click();
+  if (await waitFor(() => comments().includes(flat(text)), 15000)) return { ok: true, sent: true };
+  return { ok: false, sent: true, reason: "点了发送，但评论列表里没看到这条评论" };
+}
+
+async function postComment(rec) {
+  const c = rec.comment;
+  const key = (String(c.title).split("｜").pop() || c.title).replace(/\s+/g, "").slice(0, 10);
+  let tabId = null, r;
+  try {
+    await setRunning({ slot: "互动评论", platform: "抖音", stage: "打开评论管理" });
+    const windowId = await workWindow();
+    tabId = (await chrome.tabs.create({ windowId, url: COMMENT_URL, active: true })).id;
+    await sleepMs(8000);
+    const cur = await chrome.tabs.get(tabId);
+    if (!/creator-micro/.test(cur.url || "")) r = { ok: false, reason: "抖音登录已失效" };
+    else [{ result: r }] = await chrome.scripting.executeScript({ target: { tabId }, func: commentOnPage, args: [c.text, key] });
+  } catch (e) {
+    r = { ok: false, reason: String(e.message || e) };
+  } finally {
+    if (tabId) await closeTab(tabId);
+    await setRunning(null);
+  }
+  r = r || { ok: false, reason: "页面脚本没有返回结果" };
+  c.tries = (c.tries || 0) + 1;
+  if (r.ok) {
+    c.done = beijing().stamp;
+    await log(`💬 已在「${c.title}」下发评论：${c.text}${r.already ? "（之前已发过）" : ""}`);
+    if (!r.already) chrome.notifications.create({ type: "basic", iconUrl: "icons/128.png", title: "已发互动评论，记得去 App 置顶", message: `「${c.title}」下已发：${c.text}\n网页端不能置顶：打开抖音 App → 这条作品 → 长按这条评论 → 置顶。` });
+  } else {
+    if (r.sent) c.tries = COMMENT_TRIES; // 已点过发送：不再重试，避免重复评论
+    c.lastError = r.reason;
+    await log(`💬 评论没发成（第 ${c.tries} 次）：${r.reason}`);
+    if (c.tries >= COMMENT_TRIES) chrome.notifications.create({ type: "basic", iconUrl: "icons/128.png", title: "互动评论没发成", message: `「${c.title}」：${r.reason}。${r.sent ? "请到作品下看一眼是否已发出，避免重复。" : "可以在 App 里手动发。"}` });
+  }
+  return r;
+}
+
+async function maybeComment({ force = false } = {}) {
+  const s = await getSettings();
+  if (!force && (s.paused || !s.autoComment)) return { error: "自动评论没有开启" };
+  const state = await getState();
+  const todo = [];
+  for (const [date, slots] of Object.entries(state)) for (const [key, recs] of Object.entries(slots || {})) {
+    const rec = recs && recs.douyin;
+    if (rec && rec.published && rec.comment && !rec.comment.done && (rec.comment.tries || 0) < COMMENT_TRIES && (force || Date.now() - (rec.at || 0) > COMMENT_DELAY_MS)) todo.push({ date, key, rec });
+  }
+  if (!todo.length) return { error: force ? "最近没有待评论的作品（发布成功、结尾有互动问题、还没评论过的）" : "" };
+  todo.sort((a, b) => (b.rec.at || 0) - (a.rec.at || 0));
+  const release = await acquire("发互动评论");
+  if (!release) return { error: "正在发布或采集，稍后再试" };
+  let last;
+  try {
+    for (const t of force ? todo.slice(0, 1) : todo) {
+      last = await postComment(t.rec);
+      const fresh = await getState(); // 发评论要半分钟左右：重新读状态，只更新这一条的评论记录，不覆盖期间的发布记录
+      const r0 = fresh[t.date] && fresh[t.date][t.key] && fresh[t.date][t.key].douyin;
+      if (r0) { r0.comment = t.rec.comment; await saveState(fresh); }
+    }
+  } finally {
+    await release();
+  }
+  return last;
+}
+
 // ───────── 定时器 ─────────
 chrome.runtime.onInstalled.addListener(async () => {
   getChannels(true).catch(() => {}); // 安装、更新、重新加载后立即按新版重读仓库的频道和账号
@@ -1269,9 +1379,9 @@ chrome.runtime.onStartup.addListener(() => {
 })();
 chrome.alarms.onAlarm.addListener((a) => {
   updateBadge();
-  if (a.name === "tick") tick().then(() => maybeCollectStats()).catch(() => {});
+  if (a.name === "tick") tick().then(() => maybeComment()).then(() => maybeCollectStats()).catch(() => {});
   if (a.name === "keepalive") keepAlive();
 });
 
 // 供自动化测试调用（不影响正常使用）
-self.__kb = { collectStats, rowsFromTable, rowsFromJson, parseNum, metricsFromRaw, tick, publishOne, keepAlive, fetchPackage, recordResult, beijing, idbPut, newChannel, startLogin, accountFor, targets, detectIdentity, checkIdentity, getChannels, alreadyPublished };
+self.__kb = { maybeComment, commentOnPage, collectStats, rowsFromTable, rowsFromJson, parseNum, metricsFromRaw, tick, publishOne, keepAlive, fetchPackage, recordResult, beijing, idbPut, newChannel, startLogin, accountFor, targets, detectIdentity, checkIdentity, getChannels, alreadyPublished };

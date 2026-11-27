@@ -182,6 +182,26 @@ function showLast(r) {
   $("statsLast").textContent = r.error ? `上次 ${r.time || ""}：${r.error}` : `上次 ${r.time}：${r.n ? `读到 ${r.n} 期（${r.source}）` : "没读到数据，诊断信息已写进仓库"}`;
 }
 
+// ───── 发布后自动评论 ─────
+async function initComment() {
+  const { settings = {} } = await chrome.storage.local.get("settings");
+  $("commentOn").checked = !!settings.autoComment;
+  $("commentOn").onchange = async (e) => {
+    const { settings: cur = {} } = await chrome.storage.local.get("settings");
+    cur.autoComment = e.target.checked;
+    await chrome.storage.local.set({ settings: cur });
+  };
+  $("commentNow").onclick = async () => {
+    if (!confirm("会以你的抖音账号，在最近发布成功的一期作品下发一条评论（本期结尾的互动问题）。确定吗？")) return;
+    $("commentNow").disabled = true;
+    $("commentLast").textContent = "正在发…（约半分钟，会打开一个抖音窗口）";
+    const r = await chrome.runtime.sendMessage({ type: "commentNow" }).catch((e) => ({ error: String(e) }));
+    $("commentNow").disabled = false;
+    $("commentLast").textContent = !r ? "没有结果" : r.error ? r.error : r.ok ? (r.already ? "这期已经评论过了" : "已发出，记得去 App 里置顶") : `没发成：${r.reason}`;
+  };
+}
+initComment();
+
 window.addEventListener("hashchange", () => { if (location.hash === "#stats" && !loaded) pull(); });
 if (location.hash === "#stats") pull();
 $("stPull").onclick = pull;

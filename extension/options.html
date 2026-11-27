@@ -315,6 +315,14 @@
         <details class="st-more"><summary>每期数据（表格）</summary><div id="stTable"></div></details>
       </section>
       <section class="card">
+        <h2>发布后自动评论</h2>
+        <p class="desc">抖音发布约 10 分钟后，插件到「创作者中心 → 评论管理」核对是这条作品，在下面发一条本期结尾的互动问题（例如「你家面包放冰箱吗？评论区打 A（放）或 B（不放）」），并在评论列表里确认发出。<b>抖音网页端不能置顶评论</b>，发完会提醒你在 App 里长按这条评论 → 置顶。没确认发出时不会重发，避免重复评论。</p>
+        <div class="grid2">
+          <label class="field"><span class="label">发布后自动评论</span><span class="check" style="height:36px"><label class="switch"><input type="checkbox" id="commentOn" /><span></span></label><span class="muted">默认关闭</span></span></label>
+          <label class="field"><span class="label">试一次</span><span style="display:flex;gap:8px;align-items:center;height:36px"><button class="btn" type="button" id="commentNow">在最近一期下发评论</button><span class="muted" id="commentLast"></span></span></label>
+        </div>
+      </section>
+      <section class="card">
         <h2>自动采集</h2>
         <p class="desc">每天 23:10 以后，插件在你的浏览器里打开抖音「数据中心 → 作品分析」，只读取各作品的播放、2 秒跳出、完播、平均播放时长、点赞、评论，写进仓库 history/数据.jsonl。不会发布、修改或删除任何内容。</p>
         <div class="grid2">

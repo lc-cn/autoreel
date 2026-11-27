@@ -115,6 +115,7 @@ export const DEFAULTS = {
   textTemplate: DEFAULT_TEXT,
   browserNotify: { published: true, failed: true, verify: true, login: true },
   keepAliveHours: 6,
+  autoComment: false,    // 发布约 10 分钟后在作品下发一条本期的互动问题（「数据」页开关）；网页端不能置顶，需在 App 里置顶
   statsCollect: true,    // 每天 23:10 后采集一次抖音作品数据，写进仓库 history/数据.jsonl
   paused: false,
 };
