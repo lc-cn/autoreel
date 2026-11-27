@@ -14,11 +14,12 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 
-NAMES = {"classic": "经典版", "immersive": "实拍沉浸", "kinetic": "大字快剪", "quiz": "答题挑战"}
+NAMES = {"classic": "经典版", "immersive": "实拍沉浸", "kinetic": "大字快剪", "quiz": "答题挑战", "soft": "柔光卡片"}
 HINTS = {
     "classic": "按 brief 正常写，shot 类型要有变化。",
     "immersive": "每一段都要给 footage 的 queries（2–3 组英文关键词，写画面里看得见的东西）；画面全是实拍，图表、地图不会显示，数字要在口播里说清楚。",
     "kinetic": "口播会逐个短语变成满屏大字：多用短句，逗号之间不超过 8 个字；每段 1–2 个 **关键词**；不需要实拍和图表。",
+    "soft": "柔光卡片：浅色卡片风格。每段给 shot：有数字对比用 chart（会画成浅彩柱状图），能拍的给 footage 的 queries（放在圆角卡片里），都没有时卡片里显示这一段的第一个 **关键词**，所以每段都要标 **关键词**；标题（title）用 | 分两行，每行不超过 8 个字。",
     "quiz": "必须写 \"quiz\": {\"question\": 题目（不超过 16 字）, \"options\": [3 个选项，每个不超过 6 字，只有 1 个对，另外 2 个要像真的], \"answer\": 正确选项的序号（从 0 开始）}；"
             "第 1 段 say 以「答案是A，……」开头先揭晓再讲为什么；hook 可以直接写题目；ask 写「你答对了吗？」配 [\"答对了\",\"答错了\"]。",
 }

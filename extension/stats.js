@@ -14,7 +14,7 @@ const METRICS = [
   { k: "comments", name: "评论", fmt: (v) => (Number.isInteger(v) ? String(v) : v.toFixed(1)), better: "高" },
 ];
 const RANGES = [["14", "近 14 天"], ["30", "近 30 天"], ["all", "全部"]];
-const FORMAT_NAME = { classic: "经典版", immersive: "实拍沉浸", kinetic: "大字快剪", quiz: "答题挑战" };
+const FORMAT_NAME = { classic: "经典版", immersive: "实拍沉浸", kinetic: "大字快剪", quiz: "答题挑战", soft: "柔光卡片" };
 // 频道颜色固定（按频道，不按排名）；参考配色已通过色盲区分校验，浅色底对比度不足的由图例、线尾标注和表格补足
 const ORDER = ["kuaibao", "jiangtou", "lengzhishi", "chengyu", "lishi", "dushu", "haowu"];
 const LIGHT = ["#257de0", "#f47230", "#00b894", "#f2a600", "#ee7fac", "#008a17", "#6a4ce2"];

@@ -4,6 +4,7 @@
   classic    经典版（默认）：顶栏频道名 + 开场目录 + 每段标签、标题、进度条 + 底部字幕
   immersive  实拍沉浸：全屏实拍，没有顶栏、目录和进度条，只有大字幕；适合快报、冷知识
   kinetic    大字快剪：没有背景图，口播的每个短语变成满屏大字，跟着节奏换色、换动作；适合讲透、冷知识
+  soft       柔光卡片：暖灰底 + 淡极光、浅色主卡、无描边白卡片、胶囊按钮，黑白主色，浅彩只区分类别（按《柔光卡片设计包》）
   quiz       答题挑战：开场出题 + 选项，倒数 3 秒，揭晓答案后再讲解；适合成语、冷知识
              需要在稿子里写 "quiz": {"question": "…", "options": ["…", "…", "…"], "answer": 0}
 
@@ -15,7 +16,7 @@ import shutil
 
 import scenes as SC
 
-FORMATS = ("classic", "immersive", "kinetic", "quiz")
+FORMATS = ("classic", "immersive", "kinetic", "quiz", "soft")
 T = lambda x: f"{x:.3f}"
 QUIZ_GAP = 3.0  # 答题挑战：念完题目后留给观众想的秒数（画面倒数 3、2、1）
 
@@ -158,7 +159,7 @@ def _layout(data, times):
 def build(fmt, G, data, times, dur, proj, spoken):
     S = G.series(data)
     ctx = SC.Ctx(proj, G.ROOT, os.environ.get("AUTOREEL_CACHE", "/tmp/ziying-footage-cache"))
-    fn = {"immersive": _immersive, "kinetic": _kinetic, "quiz": _quiz}[fmt]
+    fn = {"immersive": _immersive, "kinetic": _kinetic, "quiz": _quiz, "soft": _soft}[fmt]
     events, kinds = fn(G, S, ctx, data, times, dur, spoken)
     return ctx, events, kinds
 
@@ -426,4 +427,201 @@ def _quiz(G, S, ctx, data, times, dur, spoken):
       #outro {{ position: absolute; inset: 0; background: linear-gradient(160deg, {S["base"]} 0%, #0a0b18 70%); }}
 """
     _page(G, data, S, ctx, dur, times, css, "\n".join(body), js, extra_text=question + "".join(opts))
+    return events, kinds
+
+
+# ───────── 柔光卡片（按《柔光卡片设计包》1.1.0 改成竖屏视频）─────────
+# 黑白主色；浅彩只区分类别（同一个标签在每一期颜色都一样）；字只用 ink / muted；图标色只画图形；不用蓝紫色。
+SOFT = {"bg": "#F7F5F3", "surface": "#FFFFFF", "sunken": "#F3F0ED", "ink": "#1D1A18", "muted": "#5F5852", "track": "rgba(29,26,24,.12)",
+        "tint": ["#FDEDE4", "#FCEBF1", "#F1F5DF", "#E3F4F1", "#FCF4DC"], "accent": ["#E0602F", "#D2497A", "#6E8C24", "#1E9184", "#B07A0A"],
+        "hero": "linear-gradient(135deg,#FCE3D6 0%,#F9DDE8 100%)", "hero2": "linear-gradient(135deg,#DDF2EA 0%,#FBF0D2 100%)",
+        "aurora": ["#FDE3D7", "#DCF2E6", "#FCF1D2", "#FBE1EC"],
+        "shadow": "0 6px 24px rgba(60,40,30,.08), 0 2px 6px rgba(60,40,30,.05)"}
+EASE_IN = "cubic-bezier(.2,0,0,1)"
+
+
+def _cat(tag):
+    """标签 → 分类色序号（0–4），按文字固定，同一个标签每期颜色一样。"""
+    return sum(ord(c) for c in str(tag)) % 5
+
+
+def _soft_chart(shot, cat):
+    data = [d for d in (shot.get("data") or []) if isinstance(d.get("value"), (int, float))][:6]
+    if len(data) < 2:
+        return ""
+    hi = shot.get("highlight", len(data) - 1)
+    W, H, top, bot = 760, 450, 60, 370
+    vmax = max(d["value"] for d in data) or 1
+    k = len(data)
+    bw = min(120, (W - 40) / k * 0.6)
+    fmtv = lambda v: (f"{v:.1f}".rstrip("0").rstrip(".") if isinstance(v, float) else str(v))
+    parts = [f'<line x1="0" y1="{bot}" x2="{W}" y2="{bot}" stroke="{SOFT["track"]}" stroke-width="3"/>']
+    for j, d in enumerate(data):
+        cx = 20 + (j + 0.5) * (W - 40) / k
+        h = max(6, d["value"] / vmax * (bot - top))
+        col = SOFT["accent"][cat]
+        op = "1" if j == hi else ".55"  # 当前 / 重点用实色，其他 55%
+        parts.append(f'<rect class="sbar" x="{cx - bw / 2:.1f}" y="{bot - h:.1f}" width="{bw:.1f}" height="{h:.1f}" rx="14" fill="{col}" fill-opacity="{op}" style="transform-origin:{cx:.1f}px {bot}px"/>')
+        parts.append(f'<text x="{cx:.1f}" y="{bot - h - 18:.1f}" text-anchor="middle" class="sval">{fmtv(d["value"])}</text>')
+        parts.append(f'<text x="{cx:.1f}" y="{bot + 50}" text-anchor="middle" class="slbl">{html_escape(d["label"])}</text>')
+    unit = html_escape(str(shot.get("unit", "")))
+    return f'<svg viewBox="0 0 {W} {H}" class="schart">{"".join(parts)}</svg>' + (f'<div class="sunit">单位：{unit}</div>' if unit else "")
+
+
+def html_escape(x):
+    import html
+    return html.escape(str(x))
+
+
+def _soft(G, S, ctx, data, times, dur, spoken):
+    items = data["items"]
+    n, starts, ends, hook_end, out_start = _layout(data, times)
+    js, body, events, kinds = [], [], [], []
+    E = G.E
+    cats = [_cat(it["tag"]) for it in items]
+    for it in items:
+        ctx.text(it["tag"], it["title"])
+    # 背景：暖灰底 + 顶部极光（缓慢漂移）
+    au = SOFT["aurora"]
+    body.append(f'<div id="bg" class="clip" data-start="0" data-duration="{T(dur)}" data-track-index="0"><div id="aurora"></div></div>')
+    js.append(f'tl.fromTo("#aurora", {{x: -40}}, {{x: 40, duration: {T(dur)}, ease: "sine.inOut"}}, 0);')
+    # 顶部：频道名胶囊（主色黑） + 日期 + 段落进度（ink 进度、track 轨道）
+    m = re.search(r"(\d+)月(\d+)日", data["date"])
+    md = f"{int(m.group(1))}月{int(m.group(2))}日" if m else ""
+    body.append(f'<div id="top" class="clip" data-start="0" data-duration="{T(out_start)}" data-track-index="6"><span class="pchip">{E(S["name"])}</span><span class="tdate">{E(md)}</span></div>')
+    prog = "".join(f'<div class="ptrack"><div class="pfill" id="pf{i}"></div></div>' for i in range(n))
+    body.append(f'<div id="prog" class="clip" data-start="{T(starts[0])}" data-duration="{T(out_start - starts[0])}" data-track-index="6">{prog}</div>')
+    for i in range(n):
+        js.append(f'tl.fromTo("#pf{i}", {{scaleX: 0}}, {{scaleX: 1, duration: {T(ends[i] - starts[i])}, ease: "none"}}, {T(starts[i])});')
+    # 开场：主卡（杏→粉）放钩子句 + 本期几件事（白卡列表，左边浅彩圆块）
+    hook = re.sub(r"\{([^{}|]+)\|[^{}]*\}", r"\1", data.get("hook") or data["intro"])
+    hl = G.hook_lines(hook, 9)
+    longest = max(len(re.sub(r"\*\*", "", x)) for x in hl)
+    fs = max(68, min(100, int(820 / max(1, longest))))
+    hook_html = "<br />".join(re.sub(r"[*][*](.+?)[*][*]", r"<em>\1</em>", E(x)) for x in hl)
+    rows = "".join(f'<div class="arow" id="ar{i}"><span class="tile" style="background:{SOFT["tint"][cats[i]]}">{i + 1}</span><span class="atit">{E(it["title"].replace("|", ""))}</span></div>' for i, it in enumerate(items))
+    body.append(f'<div id="hook" class="clip" data-start="0" data-duration="{T(hook_end)}" data-track-index="5"><div class="hero"><div class="hcap">{E("今天说 %d 件事" % n if SC.numbering(S) != "none" else S.get("slogan", ""))}</div><div class="hbig" style="font-size:{fs}px">{hook_html}</div></div><div class="card alist">{rows}</div></div>')
+    js.append(f'tl.fromTo("#hook .hero", {{y: 24, opacity: 0}}, {{y: 0, opacity: 1, duration: 0.28, ease: "{EASE_IN}"}}, 0.05);')
+    js.append(f'tl.fromTo("#hook .arow", {{y: 24, opacity: 0}}, {{y: 0, opacity: 1, duration: 0.28, ease: "{EASE_IN}", stagger: 0.12}}, 0.6);')
+    js.append(f'tl.fromTo("#hook .hbig em", {{backgroundSize: "0% 26%"}}, {{backgroundSize: "100% 26%", duration: 0.4, ease: "power2.out"}}, 0.45);')
+    js.append(f'tl.to("#hook", {{opacity: 0, y: -24, duration: 0.18}}, {T(hook_end - 0.18)});')
+    events.append((0.05, "whoosh-short"))
+    # 每段：标题行（浅彩圆块 + 标签胶囊）+ 大标题 + 内容卡（实拍 / 图表 / 主卡）
+    for i, it in enumerate(items):
+        s0, e0 = starts[i], ends[i]
+        c = cats[i]
+        sh = it.get("shot") or {}
+        media, kind = "", "card"
+        qs = _queries(it)
+        if sh.get("type") == "chart":
+            media = _soft_chart(sh, c)
+            kind = "chart" if media else "card"
+        if not media and qs:
+            part = (e0 - s0) / max(1, min(len(qs), 3))
+            vids = []
+            for k, q in enumerate(qs[:3]):
+                a, b = s0 + k * part, (s0 + (k + 1) * part if k < min(len(qs), 3) - 1 else e0)
+                src = ctx.footage(f"{i}_{k}", q, b - a)
+                if src:
+                    vids.append(f'<video id="v{i}_{k}" class="clip mv" src="{src}" data-start="{T(a)}" data-duration="{T(b - a)}" data-track-index="2" muted playsinline></video>')
+            if vids:
+                media, kind = "".join(vids), "footage"
+        kinds.append(kind)
+        if kind == "footage":  # 实拍放在圆角卡片里（卡片不计时，靠透明度出现和消失）
+            body.append(f'<div class="mcard" id="mc{i}">{media}</div>')
+            js.append(f'tl.fromTo("#mc{i}", {{y: 24, opacity: 0}}, {{y: 0, opacity: 1, duration: 0.28, ease: "{EASE_IN}"}}, {T(s0)});')
+            js.append(f'tl.to("#mc{i}", {{opacity: 0, duration: 0.18}}, {T(e0 - 0.18)});')
+            js.append(f'tl.fromTo("#mc{i} .mv", {{scale: 1}}, {{scale: 1.08, duration: {T(e0 - s0)}, ease: "none"}}, {T(s0)});')
+            inner = ""
+        elif kind == "chart":
+            inner = f'<div class="card ccard">{media}</div>'
+        else:
+            kw = re.findall(r"\*\*(.+?)\*\*", re.sub(r"\{([^{}|]+)\|[^{}]*\}", r"\1", it.get("say", "")))
+            word = (kw[0] if kw else it["tag"])
+            inner = f'<div class="hero2 qcard"><span class="tile big" style="background:{SOFT["tint"][c]}"><i style="background:{SOFT["accent"][c]}"></i></span><div class="qt">{E(word)}</div></div>'
+        head = f'<div class="shead"><span class="tile" style="background:{SOFT["tint"][c]}">{i + 1}</span><span class="tag">{E(it["tag"])}</span></div>'
+        ttl = "<br />".join(E(x) for x in it["title"].split("|"))
+        body.append(f'<div id="sc{i}" class="clip seg" data-start="{T(s0)}" data-duration="{T(e0 - s0)}" data-track-index="4">{head}<div class="stitle">{ttl}</div>{inner}</div>')
+        js.append(f'tl.fromTo("#sc{i} .shead, #sc{i} .stitle", {{y: 24, opacity: 0}}, {{y: 0, opacity: 1, duration: 0.28, ease: "{EASE_IN}", stagger: 0.08}}, {T(s0 + 0.05)});')
+        if kind == "chart":
+            js.append(f'tl.fromTo("#sc{i} .ccard", {{y: 24, opacity: 0}}, {{y: 0, opacity: 1, duration: 0.28, ease: "{EASE_IN}"}}, {T(s0 + 0.2)});')
+            js.append(f'tl.fromTo("#sc{i} .sbar", {{scaleY: 0}}, {{scaleY: 1, duration: 0.5, ease: "power3.out", stagger: 0.1}}, {T(s0 + 0.4)});')
+        elif kind == "card":
+            js.append(f'tl.fromTo("#sc{i} .qcard", {{y: 24, opacity: 0}}, {{y: 0, opacity: 1, duration: 0.28, ease: "{EASE_IN}"}}, {T(s0 + 0.2)});')
+        js.append(f'tl.to("#sc{i} .shead, #sc{i} .stitle", {{opacity: 0, duration: 0.18}}, {T(e0 - 0.18)});')
+        events.append((max(0.0, s0 - 0.1), "whoosh-short"))
+    # 字幕：白色胶囊卡片，ink 字；关键词下面一条图标色的底线（图标色只画图形，不给字上色）
+    popped = set()
+    for k, (p, s0, e0, li, kw) in enumerate(_pieces(G, spoken, times, S, skip={0, len(times) - 1})):
+        h, hit = _em(G, p, kw)
+        ci = cats[min(max(li - 1, 0), n - 1)]
+        body.append(f'<div class="clip cap" id="cap{k}" data-start="{T(s0)}" data-duration="{T(e0 - s0)}" data-track-index="7"><span style="--acc:{SOFT["accent"][ci]}">{h}</span></div>')
+        js.append(f'tl.fromTo("#cap{k} span", {{y: 12, opacity: 0}}, {{y: 0, opacity: 1, duration: 0.12, ease: "power2.out"}}, {T(s0)});')
+        if hit:
+            js.append(f'tl.fromTo("#cap{k} em", {{backgroundSize: "0% 30%"}}, {{backgroundSize: "100% 30%", duration: 0.3, ease: "power2.out"}}, {T(s0 + 0.05)});')
+            if li not in popped:
+                events.append((s0, "pop")); popped.add(li)
+    # 结尾：主卡（薄荷→奶黄）放互动问题；选项是胶囊，字母是黑色圆块；关注是唯一的实心主按钮（黑）
+    ask = G.tts.display_text(data.get("ask") or "").strip()
+    opts = G.ask_options(data)
+    obtn = "".join(f'<div class="sopt"><b>{"AB"[k]}</b>{E(x)}</div>' for k, x in enumerate(opts))
+    body.append(f'<div id="outro" class="clip" data-start="{T(out_start)}" data-duration="{T(dur - out_start)}" data-track-index="5"><div class="hero2 ocard"><div class="hcap">评论区{"打 A 或 B" if opts else "告诉我"}</div><div class="oq">{"<br />".join(E(x) for x in G.hook_lines(ask, 10))}</div>{f'<div class="sopts">{obtn}</div>' if opts else ""}</div><div class="sfollow">关注我 · {E(G.follow_text(S))}</div></div>')
+    js.append(f'tl.fromTo("#outro .ocard", {{y: 24, opacity: 0}}, {{y: 0, opacity: 1, duration: 0.28, ease: "{EASE_IN}"}}, {T(out_start + 0.05)});')
+    js.append(f'tl.fromTo("#outro .sopt", {{y: 24, opacity: 0}}, {{y: 0, opacity: 1, duration: 0.28, ease: "{EASE_IN}", stagger: 0.1}}, {T(out_start + 0.45)});')
+    js.append(f'tl.fromTo("#outro .sfollow", {{scale: 0.96, opacity: 0}}, {{scale: 1, opacity: 1, duration: 0.28, ease: "{EASE_IN}"}}, {T(out_start + 0.8)});')
+    if data.get("ask"):
+        events.append((out_start + 0.3, "chime"))
+    ink, mu = SOFT["ink"], SOFT["muted"]
+    css = f"""
+      #root {{ background: {SOFT["bg"]}; color: {ink}; }}
+      #bg {{ position: absolute; inset: 0; background: {SOFT["bg"]}; overflow: hidden; }}
+      #aurora {{ position: absolute; left: -80px; right: -80px; top: 0; height: 1000px;
+        background: radial-gradient(45% 70% at 6% 0%, {au[0]} 0, transparent 70%), radial-gradient(40% 60% at 40% 0%, {au[1]} 0, transparent 70%),
+                    radial-gradient(45% 70% at 72% 0%, {au[2]} 0, transparent 70%), radial-gradient(35% 60% at 100% 10%, {au[3]} 0, transparent 70%); }}
+      #ailabel {{ color: {mu}; border: 0; background: {SOFT["sunken"]}; border-radius: 999px; padding: 6px 18px; }}
+      #top {{ position: absolute; left: 60px; top: 190px; display: flex; align-items: center; gap: 22px; }}
+      .pchip {{ font-size: 38px; font-weight: 600; padding: 10px 30px; border-radius: 999px; background: {ink}; color: #fff; -webkit-text-stroke: .02em currentColor; }}
+      .tdate {{ font-size: 34px; color: {mu}; font-variant-numeric: tabular-nums; }}
+      #prog {{ position: absolute; left: 60px; right: 170px; top: 300px; display: flex; gap: 12px; }}
+      .ptrack {{ flex: 1; height: 10px; border-radius: 999px; background: {SOFT["track"]}; overflow: hidden; }}
+      .pfill {{ width: 100%; height: 100%; background: {ink}; transform-origin: left center; transform: scaleX(0); }}
+      .card {{ background: {SOFT["surface"]}; border-radius: 56px; box-shadow: {SOFT["shadow"]}; }}
+      .hero {{ background: {SOFT["hero"]}; border-radius: 56px; padding: 56px 52px; }}
+      .hero2 {{ background: {SOFT["hero2"]}; border-radius: 56px; }}
+      .hcap {{ font-size: 34px; color: {mu}; }}
+      #hook {{ position: absolute; left: 60px; right: 170px; top: 380px; }}
+      .hbig {{ font-weight: 900; line-height: 1.3; margin-top: 18px; white-space: nowrap; -webkit-text-stroke: .03em currentColor; }}
+      .hbig em, .cap em {{ font-style: normal; background-image: linear-gradient({SOFT["accent"][0]}, {SOFT["accent"][0]}); background-repeat: no-repeat; background-position: 0 92%; background-size: 100% 26%; }}
+      .cap em {{ background-image: linear-gradient(var(--acc), var(--acc)); }}
+      .alist {{ margin-top: 28px; padding: 18px 40px; }}
+      .arow {{ display: flex; align-items: center; gap: 28px; padding: 22px 0; border-bottom: 2px solid #ECE7E3; }}
+      .arow:last-child {{ border-bottom: 0; }}
+      .tile {{ flex: none; width: 84px; height: 84px; border-radius: 999px; display: grid; place-items: center; font-size: 40px; font-weight: 600; color: {ink}; font-variant-numeric: tabular-nums; }}
+      .tile.big {{ width: 132px; height: 132px; }}
+      .tile i {{ width: 44px; height: 44px; border-radius: 14px; display: block; }}
+      .atit {{ font-size: 46px; font-weight: 500; white-space: nowrap; -webkit-text-stroke: .015em currentColor; }}
+      .seg {{ position: absolute; left: 60px; right: 170px; top: 380px; }}
+      .shead {{ display: flex; align-items: center; gap: 22px; }}
+      .tag {{ font-size: 38px; padding: 10px 28px; border-radius: 999px; background: {SOFT["sunken"]}; color: {ink}; }}
+      .stitle {{ font-size: 88px; font-weight: 900; line-height: 1.25; margin-top: 30px; white-space: nowrap; -webkit-text-stroke: .03em currentColor; }}
+      .mcard {{ position: absolute; left: 60px; right: 170px; top: 720px; height: 620px; border-radius: 56px; overflow: hidden; box-shadow: {SOFT["shadow"]}; opacity: 0; background: {SOFT["sunken"]}; }}
+      .mcard .mv {{ position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }}
+      .ccard {{ position: absolute; left: 0; right: 0; top: 340px; padding: 36px 40px 30px; }}
+      .schart {{ width: 100%; height: auto; display: block; }}
+      .sval {{ font-size: 40px; font-weight: 600; fill: {ink}; font-variant-numeric: tabular-nums; }}
+      .slbl {{ font-size: 32px; fill: {mu}; }}
+      .sunit {{ font-size: 28px; color: {mu}; margin-top: 4px; }}
+      .qcard {{ position: absolute; left: 0; right: 0; top: 340px; padding: 56px 52px; display: flex; align-items: center; gap: 36px; }}
+      .qt {{ font-size: 84px; font-weight: 900; line-height: 1.25; -webkit-text-stroke: .03em currentColor; }}
+      .cap {{ position: absolute; left: 60px; right: 170px; top: 1370px; text-align: center; }}
+      .cap span {{ display: inline-block; font-size: 56px; font-weight: 600; line-height: 1.35; padding: 18px 40px; border-radius: 999px; background: {SOFT["surface"]}; color: {ink}; box-shadow: {SOFT["shadow"]}; -webkit-text-stroke: .02em currentColor; }}
+      #outro {{ position: absolute; inset: 0; }}
+      .ocard {{ position: absolute; left: 60px; right: 170px; top: 420px; padding: 60px 52px; }}
+      .oq {{ font-size: 76px; font-weight: 900; line-height: 1.3; margin-top: 18px; white-space: nowrap; -webkit-text-stroke: .03em currentColor; }}
+      .sopts {{ display: flex; gap: 24px; margin-top: 44px; }}
+      .sopt {{ flex: 1; display: flex; align-items: center; gap: 20px; font-size: 52px; font-weight: 500; padding: 20px 26px; border-radius: 999px; background: rgba(255,255,255,.72); }}
+      .sopt b {{ width: 76px; height: 76px; border-radius: 999px; display: grid; place-items: center; background: {ink}; color: #fff; font-size: 44px; flex: none; }}
+      .sfollow {{ position: absolute; left: 60px; right: 170px; top: 1120px; text-align: center; font-size: 46px; font-weight: 600; padding: 26px; border-radius: 999px; background: {ink}; color: #fff; -webkit-text-stroke: .02em currentColor; }}
+"""
+    _page(G, data, S, ctx, dur, times, css, "\n".join(body), js, extra_text="今天说件事评论区打A或B告诉我单位：" + md + S.get("slogan", "") + "0123456789")
     return events, kinds

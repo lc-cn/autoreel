@@ -24,7 +24,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.abspath(os.environ.get("AUTOREEL_ROOT") or os.path.dirname(HERE))
 H = os.path.join(ROOT, "history")
 MIN_N, GAP, SETTLE_DAYS = 3, 5.0, 2
-NAMES = {"classic": "经典版", "immersive": "实拍沉浸", "kinetic": "大字快剪", "quiz": "答题挑战"}
+NAMES = {"classic": "经典版", "immersive": "实拍沉浸", "kinetic": "大字快剪", "quiz": "答题挑战", "soft": "柔光卡片"}
 M = [("plays", "播放量（中位数）"), ("bounce2s", "2秒跳出率"), ("completion5s", "5秒完播率"), ("avg_watch", "平均播放时长（秒）"), ("comments", "评论")]
 
 # 与插件 shared.js 的 metricsFromRaw 相同：先确切字段名，比例换成百分数
