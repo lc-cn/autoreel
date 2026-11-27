@@ -15,7 +15,7 @@ import subprocess
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-ROOT = os.path.dirname(HERE)
+ROOT = os.path.abspath(os.environ.get("AUTOREEL_ROOT") or os.path.dirname(HERE))
 FILE = os.path.join(ROOT, "history", "发布记录.jsonl")
 
 
@@ -51,7 +51,15 @@ def entry(work, channel, date):
     return {"date": date, "channel": channel, "format": s.get("format") or meta.get("format") or "classic",
             "title": meta.get("title", ""), "topic": clean(s.get("topic")), "hook": clean(s.get("hook")),
             "items": [clean(it.get("title")) for it in s.get("items", [])],
-            "quiz": (s.get("quiz") or {}).get("question", ""), "branch": f"clip-{date}-{channel}"}
+            "quiz": (s.get("quiz") or {}).get("question", ""), "hook_type": s.get("hook_type", ""),
+            "seconds": _seconds(work), "branch": f"clip-{date}-{channel}"}
+
+
+def _seconds(work):
+    try:
+        return json.load(open(os.path.join(work, "结果.json"), encoding="utf-8")).get("duration")
+    except Exception:
+        return None
 
 
 def add(work, channel, date):

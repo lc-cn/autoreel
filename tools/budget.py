@@ -301,11 +301,15 @@ def headline(data):
     return display(data.get("headline") or "") or "、".join(display(it.get("title", "")) for it in (data.get("items") or [])[:2])
 
 
-def publish_title(data, S, limit=TITLE_LIMIT):
-    """发布标题。channel.json 的 title_format 可用 {headline} {name} {date} {topic}，默认「{headline}｜{name}」。
+def publish_title(data, S, limit=TITLE_LIMIT, no=None):
+    """发布标题。channel.json 的 title_format 可用 {headline} {name} {date} {topic} {no}，默认「{headline}｜{name}」。
+    title_style 为 number（系列编号）且没写 title_format 时，用「{name} 第{no}期｜{headline}」；no 由调用方按发布记录算好传进来。
     超过 30 字时先去掉 headline 以外的部分（headline 完整最重要），headline 自己超过 30 字才截断。"""
-    fmt = (S or {}).get("title_format") or DEFAULT_TITLE_FORMAT
-    vals = {"name": (S or {}).get("name", ""), "date": _md(data), "headline": headline(data), "topic": display(data.get("topic") or "")}
+    fmt = (S or {}).get("title_format") or ""
+    if not fmt:
+        fmt = "{name} 第{no}期｜{headline}" if (S or {}).get("title_style") == "number" and no else DEFAULT_TITLE_FORMAT
+    vals = {"name": (S or {}).get("name", ""), "date": _md(data), "headline": headline(data), "topic": display(data.get("topic") or ""),
+            "no": no if no else ""}
     try:
         t = fmt.format(**vals)
     except (KeyError, IndexError, ValueError):

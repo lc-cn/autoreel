@@ -2,6 +2,7 @@
 // 流程：每 5 分钟检查一次 → 到点的栏目从 GitHub 中转仓库下载视频 → 依次在抖音、视频号、快手的上传页里自动填写发布
 //      → 结果写回仓库 status.json，并按设置发浏览器通知 / Webhook。
 
+import { metricsFromRaw } from "./shared.js";
 import { PLATFORMS, ORDER, channelTag, MAX_ATTEMPTS, JOB_TIMEOUT_MS, CHUNK, DEFAULTS, PRESETS, newChannel, buildVars, buildRequest } from "./shared.js";
 
 // ───────── 存储 / 日志 ─────────
@@ -458,6 +459,8 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
       case "checkLogin":
         keepAlive(true);
         return reply({ ok: true });
+      case "collectStats":
+        return reply(await collectStats({ manual: true }));
       case "testRoutes": {
         // 用最新一期视频的前 2MB 测每条下载线路的速度
         try {
@@ -795,7 +798,11 @@ async function getChannels(force = false) {
     for (const id of cfg.channels || []) {
       try {
         const ch = await raw(`channels/${id}/channel.json`);
-        list.push({ key: id, name: ch.name || id, notBefore: (ch.schedule && ch.schedule.publish) || "00:00", to: Array.isArray(ch.publish_to) ? ch.publish_to : null });
+        const sc = ch.schedule || {};
+        // 测试发布时间：填了 publish_alt 就按天轮换（双日用 publish，单日用 publish_alt），复盘时比较时段
+        const ord = Math.floor(Date.parse(beijing().date + "T00:00:00Z") / 864e5);
+        const at = sc.publish_alt && ord % 2 === 1 ? sc.publish_alt : (sc.publish || "00:00");
+        list.push({ key: id, name: ch.name || id, notBefore: at, to: Array.isArray(ch.publish_to) ? ch.publish_to : null });
       } catch (e) {
         await log(`读取频道 ${id} 失败：${e.message}`);
       }
@@ -1001,6 +1008,247 @@ async function keepAlive(force = false) {
   }
 }
 
+// ───────── 作品数据采集（只读）─────────
+// 每天深夜在你的浏览器里打开抖音「数据中心 → 作品分析」，只看不点（翻页除外），读出每条作品的播放、2 秒跳出、完播、
+// 平均播放时长、点赞、评论等，写进仓库默认分支的 history/数据.jsonl，供每周复盘按「频道 × 形式」对比。
+// 读法有两种：页面上的表格（按列名对应），以及页面加载的数据（找标题和发布记录对得上的作品，取其中的数字）。
+// 都读不到时把页面结构写进 history/数据采集诊断.json（只有列名、字段名和接口路径，不含账号信息），方便修。
+const STATS_URL = "https://creator.douyin.com/creator-micro/data-center/content";
+const MANAGE_URL = "https://creator.douyin.com/creator-micro/content/manage"; // 作品管理：有点赞、评论、分享等
+const STATS_FILE = "history/数据.jsonl";
+const STATS_DIAG = "history/数据采集诊断.json";
+const COLS = [["title", /^(作品|作品名称|视频|标题|作品标题|内容)$/], ["published", /发布时间|发布日期/], ["plays", /播放(量|次数)?$|^播放/], ["bounce2s", /2\s*[sS秒].*跳出/],
+  ["completion5s", /5\s*[sS秒].*完播/], ["completion", /^(?!.*5\s*[sS秒]).*完播率/], ["avg_watch", /平均(播放|观看)时长|均播/], ["likes", /点赞/], ["comments", /评论/], ["shares", /分享/], ["favorites", /收藏/], ["follows", /涨粉|新增粉丝/], ["cover_ctr", /封面点击率/]];
+const sleepMs = (ms) => new Promise((r) => setTimeout(r, ms));
+const normTitle = (t) => String(t || "").replace(/\s+/g, "").replace(/[｜|].*$/, (m) => m); // 保留整段，比较时去空白
+
+function readStatsPage(clickNext) { // 在抖音页面里运行：读表格，必要时点「下一页」
+  const txt = (e) => (e.innerText || e.textContent || "").replace(/\s+/g, " ").trim();
+  let headers = [], rows = [];
+  for (const t of document.querySelectorAll("table")) {
+    const hs = [...t.querySelectorAll("thead th")].map(txt);
+    if (hs.some((h) => /播放|完播|跳出/.test(h))) {
+      headers = hs;
+      rows = [...t.querySelectorAll("tbody tr")].map((tr) => [...tr.querySelectorAll("td")].map(txt)).filter((r) => r.length >= 3);
+      break;
+    }
+  }
+  if (!headers.length) {
+    const rws = [...document.querySelectorAll('[role="row"]')];
+    if (rws.length > 1) {
+      headers = [...rws[0].querySelectorAll('[role="columnheader"],[role="cell"],[role="gridcell"]')].map(txt);
+      rows = rws.slice(1).map((r) => [...r.querySelectorAll('[role="cell"],[role="gridcell"]')].map(txt)).filter((r) => r.length >= 3);
+    }
+  }
+  const next = document.querySelector(".semi-page-next:not(.semi-page-item-disabled)") ||
+    [...document.querySelectorAll("li,button")].find((e) => txt(e) === "下一页" && !/disabled/.test(e.className) && !e.disabled);
+  if (clickNext && next) next.click();
+  const labels = [...new Set([...document.querySelectorAll("th,[role=columnheader],[class*=header] span,[class*=title]")].map(txt).filter((x) => x && x.length <= 12))].slice(0, 60);
+  return { url: location.href, headers, rows, hasNext: !!next, tables: document.querySelectorAll("table").length, labels };
+}
+
+async function repoText(path) {
+  try {
+    const j = await (await gh(`contents/${encodeURI(path)}`)).json();
+    return { sha: j.sha, text: new TextDecoder().decode(Uint8Array.from(atob(j.content.replace(/\n/g, "")), (c) => c.charCodeAt(0))) };
+  } catch (e) {
+    if (e.status === 404) return { sha: null, text: "" };
+    throw e;
+  }
+}
+async function repoPut(path, text, message, sha) {
+  let bin = "";
+  const bytes = new TextEncoder().encode(text);
+  for (let k = 0; k < bytes.length; k += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(k, k + 0x8000));
+  await gh(`contents/${encodeURI(path)}`, { method: "PUT", body: { message, content: btoa(bin), ...(sha ? { sha } : {}) } });
+}
+
+function parseNum(v) {
+  const t = String(v || "").trim();
+  if (!t || t === "-" || t === "--") return null;
+  const d = t.match(/^(?:(\d+)\s*(?:分|分钟|min))?\s*(?:(\d+(?:\.\d+)?)\s*(?:秒|s))?$/); // 「2分37秒」「12秒」「12s」→ 秒
+  if (d && (d[1] || d[2])) return (parseInt(d[1] || 0, 10) * 60) + parseFloat(d[2] || 0);
+  const hms = t.match(/^(\d+):(\d{2})(?::(\d{2}))?$/); // 「02:37」
+  if (hms) return hms[3] ? (+hms[1]) * 3600 + (+hms[2]) * 60 + (+hms[3]) : (+hms[1]) * 60 + (+hms[2]);
+  const m = t.match(/^(-?[\d.,]+)\s*(万|w|W)?\s*(%|％)?/);
+  if (m) {
+    let n = parseFloat(m[1].replace(/,/g, ""));
+    if (m[2]) n *= 10000;
+    return m[3] ? Math.round(n * 100) / 100 : n; // 百分比保留数值（例如 45.31）
+  }
+  return null;
+}
+
+function rowsFromTable(pages) {
+  const out = [];
+  for (const pg of pages) {
+    if (!pg || !pg.headers.length) continue;
+    const idx = {};
+    pg.headers.forEach((h, i) => {
+      const c = COLS.find(([, re]) => re.test(h));
+      if (c && !(c[0] in idx)) idx[c[0]] = i;
+    });
+    for (const r of pg.rows) {
+      const rec = { metrics: {}, cells: {} };
+      pg.headers.forEach((h, i) => (rec.cells[h] = r[i]));
+      rec.title = idx.title != null ? r[idx.title] : r[0];
+      if (idx.published != null) rec.published = r[idx.published];
+      for (const [k] of COLS) if (!["title", "published"].includes(k) && idx[k] != null) rec.metrics[k] = parseNum(r[idx[k]]);
+      out.push(rec);
+    }
+  }
+  return out;
+}
+
+// 在页面加载的数据里找标题对得上的作品：返回 [{title, metrics, raw}]，raw 只留数字字段
+function rowsFromJson(bodies, titles) {
+  const found = new Map(), shapes = [];
+  const want = titles.map((t) => [t, normTitle(t)]);
+  const visit = (o, depth) => {
+    if (!o || typeof o !== "object" || depth > 8) return;
+    if (Array.isArray(o)) return o.forEach((x) => visit(x, depth + 1));
+    const strs = Object.values(o).filter((v) => typeof v === "string");
+    const hit = want.find(([, n]) => strs.some((v) => { const nv = normTitle(v); return nv && (nv === n || n.endsWith(nv) || nv.startsWith(n)); }));
+    if (hit) {
+      const prev = found.get(hit[0]);
+      const raw = prev ? prev.raw : {};
+      const flat = (x, pre, d) => {
+        if (!x || typeof x !== "object" || d > 3) return;
+        for (const [k, v] of Object.entries(x)) {
+          if (/token|cookie|sign|secret|passw/i.test(k)) continue;
+          if (typeof v === "number") raw[pre + k] = v;
+          else if (typeof v === "string" && /^-?\d+(\.\d+)?%?$/.test(v) && v.length < 16 && !/id$/i.test(k)) raw[pre + k] = parseFloat(v);
+          else if (typeof v === "object") flat(v, pre + k + ".", d + 1);
+        }
+      };
+      flat(o, "", 0);
+      found.set(hit[0], { title: hit[0], metrics: metricsFromRaw(raw), raw, source: "data" });
+      if (shapes.length < 3) shapes.push(Object.keys(raw).slice(0, 80));
+      return;
+    }
+    for (const v of Object.values(o)) if (v && typeof v === "object") visit(v, depth + 1);
+  };
+  for (const b of bodies) visit(b.json, 0);
+  return { rows: [...found.values()], shapes };
+}
+
+async function collectStats({ manual = false } = {}) {
+  const s = await getSettings();
+  if (!s.platforms.douyin) return { error: "抖音已停用" };
+  if (!s.token || !s.repo) return { error: "还没有设置 GitHub 仓库和令牌" };
+  const release = await acquire("采集作品数据");
+  if (!release) return { error: "正在发布或检查登录，稍后再采集" };
+  let tabId = null;
+  const bodies = [], seen = [];
+  const onEv = async (src, method, p) => {
+    if (src.tabId !== tabId) return;
+    if (method === "Network.responseReceived" && /json/.test(p.response.mimeType || "") && /douyin\.com/.test(p.response.url)) {
+      seen.push({ id: p.requestId, path: new URL(p.response.url).pathname });
+    } else if (method === "Network.loadingFinished" && seen.some((x) => x.id === p.requestId) && bodies.length < 200) {
+      try {
+        const r = await chrome.debugger.sendCommand({ tabId }, "Network.getResponseBody", { requestId: p.requestId });
+        const txt = r.base64Encoded ? atob(r.body) : r.body;
+        if (txt.length < 3e6) bodies.push({ path: seen.find((x) => x.id === p.requestId).path, json: JSON.parse(txt) });
+      } catch (_) {}
+    }
+  };
+  const result = { time: beijing().stamp };
+  try {
+    await setRunning({ slot: "作品数据", platform: "抖音", stage: "打开数据中心" });
+    const windowId = await workWindow();
+    const tab = await chrome.tabs.create({ windowId, url: "about:blank", active: true });
+    tabId = tab.id;
+    await ensureDebugger(tabId);
+    chrome.debugger.onEvent.addListener(onEv);
+    await chrome.debugger.sendCommand({ tabId }, "Network.enable", { maxResourceBufferSize: 8e6, maxTotalBufferSize: 6e7 });
+    await chrome.tabs.update(tabId, { url: STATS_URL });
+    await sleepMs(15000);
+    const cur = await chrome.tabs.get(tabId);
+    if (!/creator-micro/.test(cur.url || "")) {
+      await setLogin("douyin", false);
+      result.error = "抖音登录已失效，没能打开数据中心";
+      await notify("login", "抖音登录已失效", "作品数据没采集到。点「扫码登录」用 App 扫码即可。", { login: "douyin" }, { platform: "douyin" });
+      return result;
+    }
+    const pages = [];
+    for (let i = 0; i < 8; i++) {
+      const [r] = await chrome.scripting.executeScript({ target: { tabId }, func: readStatsPage, args: [i < 7] });
+      pages.push(r && r.result);
+      if (!r || !r.result || !r.result.hasNext) break;
+      await sleepMs(3500);
+    }
+    // 作品管理页：点赞、评论、分享（数据中心的作品分析里没有这些）；往下滚几次加载更多作品
+    await setRunning({ slot: "作品数据", platform: "抖音", stage: "读取作品管理" });
+    await chrome.tabs.update(tabId, { url: MANAGE_URL });
+    await sleepMs(12000);
+    for (let i = 0; i < 6; i++) {
+      await chrome.scripting.executeScript({ target: { tabId }, func: () => { const el = [...document.querySelectorAll("*")].filter((e) => e.scrollHeight > e.clientHeight + 200 && /auto|scroll/.test(getComputedStyle(e).overflowY)).sort((a, b) => b.scrollHeight - a.scrollHeight)[0] || document.scrollingElement; el.scrollTop = el.scrollHeight; } }).catch(() => {});
+      await sleepMs(2500);
+    }
+    // 发布记录里的标题：用来在页面数据里认出我们的作品
+    const hist = (await repoText("history/发布记录.jsonl")).text.split("\n").filter(Boolean).map((l) => { try { return JSON.parse(l); } catch (_) { return null; } }).filter(Boolean);
+    const titles = [...new Set(hist.map((h) => h.title).filter(Boolean))];
+    let rows = rowsFromTable(pages).filter((r) => r.title);
+    let source = "表格";
+    const fromJson = rowsFromJson(bodies, titles);
+    if (!rows.some((r) => Object.values(r.metrics).some((v) => v != null))) {
+      rows = fromJson.rows;
+      source = "页面数据";
+    } else { // 表格为主，页面数据里多出来的指标补进去
+      const byT = new Map(fromJson.rows.map((r) => [normTitle(r.title), r]));
+      for (const r of rows) { const j = byT.get(normTitle(r.title)); if (j) { for (const [k, v] of Object.entries(j.metrics)) if (r.metrics[k] == null) r.metrics[k] = v; r.raw = j.raw; } }
+    }
+    result.n = rows.length;
+    result.source = rows.length ? source : "";
+    if (rows.length) {
+      const cur = await repoText(STATS_FILE);
+      const map = new Map();
+      for (const l of cur.text.split("\n")) {
+        try { const o = JSON.parse(l); map.set(normTitle(o.title), o); } catch (_) {}
+      }
+      for (const r of rows) {
+        const old = map.get(normTitle(r.title)) || {};
+        const metrics = { ...(old.metrics || {}) };
+        for (const [k, v] of Object.entries(r.metrics || {})) if (v != null) metrics[k] = v;
+        map.set(normTitle(r.title), { title: r.title, published: r.published || old.published || "", collected: result.time, source, metrics, ...(r.raw ? { raw: r.raw } : { cells: r.cells }) });
+      }
+      const text = [...map.values()].map((o) => JSON.stringify(o)).join("\n") + "\n";
+      await repoPut(STATS_FILE, text, `插件：作品数据 ${rows.length} 条`, cur.sha);
+    }
+    // 诊断信息：第一次采集，或者什么都没读到时写一份，方便对照页面结构修正读法
+    const { statsDiagDone } = await chrome.storage.local.get("statsDiagDone");
+    if (!rows.length || !statsDiagDone || manual) {
+      const diag = { time: result.time, url: cur.url, result: { n: rows.length, source },
+        table: pages.filter(Boolean).map((p) => ({ headers: p.headers, rows: p.rows.length, firstRow: p.rows[0] || [], tables: p.tables, hasNext: p.hasNext })),
+        labels: (pages[0] || {}).labels || [], jsonPaths: [...new Set(seen.map((x) => x.path))].slice(0, 80), matchedShapes: fromJson.shapes, knownTitles: titles.length };
+      const d = await repoText(STATS_DIAG);
+      await repoPut(STATS_DIAG, JSON.stringify(diag, null, 1) + "\n", "插件：作品数据采集诊断", d.sha);
+      await chrome.storage.local.set({ statsDiagDone: true });
+    }
+    await log(rows.length ? `作品数据已采集 ${rows.length} 条（来自${source}），写进仓库 ${STATS_FILE}` : `作品数据没读到（页面结构可能不同），诊断信息已写进仓库 ${STATS_DIAG}`);
+    return result;
+  } catch (e) {
+    result.error = String(e.message || e);
+    await log(`采集作品数据出错：${result.error}`);
+    return result;
+  } finally {
+    chrome.debugger.onEvent.removeListener(onEv);
+    if (tabId) await closeTab(tabId);
+    await chrome.storage.local.set({ statsLast: result, ...(result.error ? {} : { statsDate: beijing().date }) });
+    await setRunning(null);
+    await release();
+  }
+}
+async function maybeCollectStats() {
+  const s = await getSettings();
+  if (s.paused || s.statsCollect === false) return;
+  const { date, hm } = beijing();
+  if (hm < "23:10") return;
+  const { statsDate } = await chrome.storage.local.get("statsDate");
+  if (statsDate === date) return;
+  await collectStats();
+}
+
 // ───────── 定时器 ─────────
 chrome.runtime.onInstalled.addListener(async () => {
   getChannels(true).catch(() => {}); // 安装、更新、重新加载后立即按新版重读仓库的频道和账号
@@ -1021,9 +1269,9 @@ chrome.runtime.onStartup.addListener(() => {
 })();
 chrome.alarms.onAlarm.addListener((a) => {
   updateBadge();
-  if (a.name === "tick") tick();
+  if (a.name === "tick") tick().then(() => maybeCollectStats()).catch(() => {});
   if (a.name === "keepalive") keepAlive();
 });
 
 // 供自动化测试调用（不影响正常使用）
-self.__kb = { tick, publishOne, keepAlive, fetchPackage, recordResult, beijing, idbPut, newChannel, startLogin, accountFor, targets, detectIdentity, checkIdentity, getChannels, alreadyPublished };
+self.__kb = { collectStats, rowsFromTable, rowsFromJson, parseNum, metricsFromRaw, tick, publishOne, keepAlive, fetchPackage, recordResult, beijing, idbPut, newChannel, startLogin, accountFor, targets, detectIdentity, checkIdentity, getChannels, alreadyPublished };

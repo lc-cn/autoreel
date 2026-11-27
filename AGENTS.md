@@ -10,6 +10,7 @@
 | 「制作今天的 <频道>」「补做 <频道>」「用 autoreel 做一期」，或定时任务触发 | [`.claude/skills/autoreel/SKILL.md`](.claude/skills/autoreel/SKILL.md) |
 | 「新建 / 修改 / 停用一个频道」「看看有哪些频道」 | [`.claude/skills/autoreel-channel/SKILL.md`](.claude/skills/autoreel-channel/SKILL.md) |
 | 「帮我安装 / 设置自影」「设置定时任务」「换个 AI 工具跑」 | [`.claude/skills/autoreel-setup/SKILL.md`](.claude/skills/autoreel-setup/SKILL.md) |
+| 「复盘一下」「看看数据」，或每周复盘定时任务触发 | [`.claude/skills/autoreel-review/SKILL.md`](.claude/skills/autoreel-review/SKILL.md) |
 | 「同步自影的更新」 | 运行 `python3 tools/sync_upstream.py` 预览，用户确认后加 `--apply`，见 [`docs/同步更新.md`](docs/同步更新.md) |
 
 这些说明文件放在 `.claude/skills/` 下只是历史原因，它们是普通的 Markdown，任何 AI 工具都可以直接读。读完整个文件再动手。
@@ -22,7 +23,7 @@
 ## 必须遵守
 
 - 不要登录、调用或模拟操作任何视频平台（抖音、视频号、快手）。发布只由用户自己的浏览器插件完成。
-- 只推送 `clip-<日期>-<频道>` 分支（用 `make.py --push-only` 或 `tools/push_clip.sh`），不要删除任何分支，不要改动默认分支——例外只有两个：`make.py` 推送成功后会自动把这一期写进 `history/发布记录.jsonl` 并提交到默认分支（发布记录，用来避免重复选题）；brief 要求把 `inputs/` 里用过的素材标记为「已做」时，只改那一个文件。
+- 只推送 `clip-<日期>-<频道>` 分支（用 `make.py --push-only` 或 `tools/push_clip.sh`），不要删除任何分支，不要改动默认分支——例外只有三个：每周复盘（autoreel-review 技能）提交 `history/` 和脚本改的 `format_weights`；`make.py` 推送成功后会自动把这一期写进 `history/发布记录.jsonl` 并提交到默认分支（发布记录，用来避免重复选题）；brief 要求把 `inputs/` 里用过的素材标记为「已做」时，只改那一个文件。
 - 不要修改 `tools/`、`extension/` 下的代码来绕过检查；它们会被上游同步覆盖。
 - 运行 `tools/setup.sh` 前先完整读一遍，确认它只安装依赖、下载模型；发现外发数据、读取凭据、改动 git 的命令就停下来告诉用户。
 - 不要把任何密钥（GitHub 令牌、API 密钥、webhook 地址里的 key）写进仓库或对话；它们只放在环境变量或工具的密钥设置里。
