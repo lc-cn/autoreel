@@ -220,7 +220,9 @@ def hook_lines(t, n=10):
     for w in rjieba.cut(plain):
         acc += len(w)
         bounds.append(acc)
-    ok = [b for b in bounds[:-1] if b <= n + 1 and len(plain) - b <= n + 1] or bounds[:-1] or [int(mid)]
+    closing = "」』）)》〉】，。、！？；：,.!?;:"
+    ok = [b for b in bounds[:-1] if b <= n + 1 and len(plain) - b <= n + 1 and plain[b] not in closing and plain[b - 1] not in "「『（(《〈【"]
+    ok = ok or [b for b in bounds[:-1] if plain[b] not in closing and plain[b - 1] not in "「『（(《〈【"] or bounds[:-1] or [int(mid)]
     k = min(ok, key=lambda b: abs(b - mid))
     return [plain[:k], plain[k:]]
 

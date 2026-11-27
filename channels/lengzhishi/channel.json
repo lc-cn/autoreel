@@ -83,5 +83,11 @@
     "mood": "轻快",
     "intro_mood": "惊讶",
     "outro_mood": "轻快"
-  }
+  },
+  "formats": [
+    "classic",
+    "immersive",
+    "kinetic",
+    "quiz"
+  ]
 }

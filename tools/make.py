@@ -28,6 +28,8 @@ ENV = {**os.environ, "HYPERFRAMES_NO_TELEMETRY": "1", "DO_NOT_TRACK": "1"}
 sys.path.insert(0, HERE)
 import notify  # noqa: E402
 import budget  # noqa: E402
+import history  # noqa: E402
+import rotation  # noqa: E402
 
 
 def sh(cmd, cwd=None, check=True):
@@ -87,6 +89,12 @@ def push_and_notify(a, res, W, D, out, finish):
         res["branch"] = f"clip-{D}-{a.channel}"
         res["pushed"] = r.stdout.strip().splitlines()[-1] if r.stdout.strip() else "已推送"
         print("   " + res["pushed"])
+        try:  # 记进发布记录（默认分支 history/发布记录.jsonl），以后选题先查它，避免重复
+            history.add(W, a.channel, D)
+            res["history"] = history.commit_push()
+        except Exception as e:  # 记录失败不影响已经推送的片子
+            res["history"] = f"发布记录没写上：{e}"
+        print("   " + res["history"])
     if a.notify:
         dur = res.get("duration") or 0
         msg = f"{res['title']}\n时长 {dur:.0f} 秒" + (f"，已推送 {res.get('branch')}，到点由插件发布" if a.push else "（未推送）")
@@ -117,12 +125,19 @@ def main():
     data["channel"] = a.channel
     D = a.date or date_of(data)
     early = []
-    if not str(data.get("hook", "")).strip():
+    S.setdefault("id", a.channel)
+    if not data.get("format"):  # 没写形式就按轮换表来（见 tools/rotation.py）
+        data["format"] = rotation.format_for(S, D)
+    if data["format"] == "quiz":
+        q = data.get("quiz") or {}
+        if not str(q.get("question", "")).strip() or len(q.get("options") or []) < 2 or not 0 <= int(q.get("answer", -1)) < len(q.get("options") or []):
+            early.append("这一期是答题挑战（format: quiz），需要写 quiz：{\"question\": 题目, \"options\": [3 个选项], \"answer\": 正确选项序号}，写法见 python3 tools/rotation.py " + a.channel)
+    if not str(data.get("hook", "")).strip() and data["format"] != "quiz":
         early.append("缺少 hook（钩子句）：开场第一句要直接抛出最抓人的内容，观众 2 秒内就决定划不划走，写法见 autoreel 技能")
     W = a.work or f"/tmp/autoreel-work/{a.channel}-{D}"
     os.makedirs(W, exist_ok=True)
     json.dump(data, open(os.path.join(W, "script.json"), "w"), ensure_ascii=False, indent=1)
-    res = {"channel": a.channel, "name": S.get("name", a.channel), "date": D, "work": W, "problems": [], "warnings": []}
+    res = {"channel": a.channel, "name": S.get("name", a.channel), "date": D, "work": W, "problems": [], "warnings": [], "format": data.get("format")}
 
     def finish(code):
         json.dump(res, open(os.path.join(W, "结果.json"), "w"), ensure_ascii=False, indent=1)
