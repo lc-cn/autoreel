@@ -611,8 +611,8 @@ def _soft(G, S, ctx, data, times, dur, spoken):
       .sval {{ font-size: 40px; font-weight: 600; fill: {ink}; font-variant-numeric: tabular-nums; }}
       .slbl {{ font-size: 32px; fill: {mu}; }}
       .sunit {{ font-size: 28px; color: {mu}; margin-top: 4px; }}
-      .qcard {{ position: absolute; left: 0; right: 0; top: 340px; padding: 56px 52px; display: flex; align-items: center; gap: 36px; }}
-      .qt {{ font-size: 84px; font-weight: 900; line-height: 1.25; -webkit-text-stroke: .03em currentColor; }}
+      .qcard {{ position: absolute; left: 0; right: 0; top: 340px; height: 560px; padding: 56px 52px; display: flex; flex-direction: column; justify-content: center; align-items: flex-start; gap: 40px; }}
+      .qt {{ font-size: 120px; font-weight: 900; line-height: 1.2; white-space: nowrap; -webkit-text-stroke: .03em currentColor; }}
       .cap {{ position: absolute; left: 60px; right: 170px; top: 1370px; text-align: center; }}
       .cap span {{ display: inline-block; font-size: 56px; font-weight: 600; line-height: 1.35; padding: 18px 40px; border-radius: 999px; background: {SOFT["surface"]}; color: {ink}; box-shadow: {SOFT["shadow"]}; -webkit-text-stroke: .02em currentColor; }}
       #outro {{ position: absolute; inset: 0; }}
