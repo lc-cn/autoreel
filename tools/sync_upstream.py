@@ -17,6 +17,7 @@
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 
@@ -66,13 +67,25 @@ def main():
             stamp = {}
     last = stamp.get("commit", "")
     print(f"上游 {a.repo}@{a.ref}：{up[:7]}" + (f"（上次同步 {last[:7]}）" if last else "（第一次同步）"))
-    if up == last:
+    # 框架范围以上游最新的 sync_upstream.py 为准（上游新增的目录这一次就能同步过来）
+    fw = list(FRAMEWORK)
+    try:
+        import ast
+        src = git("show", "FETCH_HEAD:tools/sync_upstream.py")
+        m = re.search(r"^FRAMEWORK = (\[.*?\])", src, re.S | re.M)
+        if m:
+            fw = sorted(set(fw) | set(ast.literal_eval(m.group(1))))
+    except Exception:
+        pass
+    missing = [p for p in fw if p.endswith("/") and not os.path.isdir(os.path.join(ROOT, p))
+               and any(f.startswith(p) for f in git("ls-tree", "-r", "--name-only", "FETCH_HEAD").splitlines())]
+    if up == last and not missing:
         print("已经是最新，不用同步。")
         return
 
     theirs = set(git("ls-tree", "-r", "--name-only", "FETCH_HEAD").splitlines())
     mine = set(git("ls-files").splitlines())
-    in_fw = lambda f: any(f == p or f.startswith(p) for p in FRAMEWORK)
+    in_fw = lambda f: any(f == p or f.startswith(p) for p in fw)
     plan = {"更新": [], "新增": [], "删除": [], "补字段": [], "新频道": []}
 
     def blob(f):
