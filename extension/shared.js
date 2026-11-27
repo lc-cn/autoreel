@@ -115,6 +115,7 @@ export const DEFAULTS = {
   textTemplate: DEFAULT_TEXT,
   browserNotify: { published: true, failed: true, verify: true, login: true },
   keepAliveHours: 6,
+  statsCollect: true,    // 每天 23:10 后采集一次抖音作品数据，写进仓库 history/数据.jsonl
   paused: false,
 };
 

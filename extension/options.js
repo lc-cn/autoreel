@@ -33,7 +33,7 @@ function showTab() {
     if (!dirty) S.acct = ((await chrome.storage.local.get("settings")).settings || {}).acct || {};
     renderPlatforms();
   });
-  document.querySelector(".savebar").style.display = ["channels", "studio", "materials", "voices", "works"].includes(t) ? "none" : ""; // 这几页直接读写仓库，有自己的保存按钮
+  document.querySelector(".savebar").style.display = ["channels", "studio", "materials", "voices", "works", "stats"].includes(t) ? "none" : ""; // 这几页直接读写仓库，有自己的保存按钮
 }
 window.addEventListener("hashchange", showTab);
 
@@ -516,7 +516,8 @@ $("save").onclick = async () => {
   S.paused = !$("auto").checked;
   const out = { ...S };
   delete out.webhook; // 旧版字段，已迁移为推送渠道
-  out.ident = ((await chrome.storage.local.get("settings")).settings || {}).ident || {}; // 账号记录由后台维护，以存储里最新的为准
+  out.ident = ((await chrome.storage.local.get("settings")).settings || {}).ident || {};
+  { const cur = (await chrome.storage.local.get("settings")).settings || {}; if ("statsCollect" in cur) out.statsCollect = cur.statsCollect; } // 「数据」页的采集开关直接保存，以存储里的为准 // 账号记录由后台维护，以存储里最新的为准
   await chrome.storage.local.set({ settings: out });
   dirty = false;
   $("saveState").textContent = `已保存 · ${nowStamp().slice(11, 16)}`;
