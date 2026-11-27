@@ -101,7 +101,8 @@ class Ctx:
         if not footage.available():
             self.warnings.append("没有 PEXELS_API_KEY / PIXABAY_API_KEY，实拍镜头改为文字镜头")
             return None
-        r = footage.fetch(query, seconds + 0.6, f"{self.proj}/assets/media/f{i}.mp4", self.cache)
+        r = footage.fetch(query, seconds + 0.6, f"{self.proj}/assets/media/f{i}.mp4", self.cache,
+                          exclude={u["url"] for u in self.used if u.get("url")})
         if not r:
             self.warnings.append(f"{where}没找到「{query}」的素材，改为文字镜头")
             return None

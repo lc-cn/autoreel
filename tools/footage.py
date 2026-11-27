@@ -68,7 +68,8 @@ def _normalize(src, seconds, out):
     return out
 
 
-def fetch(query, seconds, out_path, cache_dir):
+def fetch(query, seconds, out_path, cache_dir, exclude=()):
+    """exclude：这一期已经用过的素材页面地址，同一段素材不在一期里出现两次。"""
     if not query:
         return None
     fake = os.environ.get("AUTOREEL_FAKE_FOOTAGE")  # 仅用于测试：用本地视频代替网络素材
@@ -80,8 +81,10 @@ def fetch(query, seconds, out_path, cache_dir):
     cached = os.path.join(cache_dir, f"{tag}.mp4")
     meta_f = cached + ".json"
     if os.path.exists(cached) and os.path.exists(meta_f):
-        _copy(cached, out_path)
-        return {**json.load(open(meta_f)), "path": out_path}
+        info = json.load(open(meta_f))
+        if info.get("url") not in exclude:
+            _copy(cached, out_path)
+            return {**info, "path": out_path}
     for finder in (_pexels, _pixabay):
         try:
             cands = finder(query, seconds)
@@ -89,6 +92,7 @@ def fetch(query, seconds, out_path, cache_dir):
             print(f"素材：{finder.__name__[1:]} 搜索「{query}」失败：{e}", file=sys.stderr)
             continue
         cands.sort(key=lambda c: c["dur"] < seconds)  # 够长的优先
+        cands = [c for c in cands if c.get("url") not in exclude]
         for c in cands[:3]:
             raw = cached + ".raw"
             try:
