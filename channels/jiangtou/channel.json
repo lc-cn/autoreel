@@ -87,6 +87,7 @@
   "formats": [
     "classic",
     "immersive",
-    "kinetic"
+    "kinetic",
+    "soft"
   ]
 }
