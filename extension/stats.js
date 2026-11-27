@@ -1,12 +1,14 @@
 // 自影 · 设置页「数据」：各频道流量趋势折线图 + 按频道 / 按视频形式汇总 + 每期数据表；自动采集开关
 // 数据：仓库 history/数据.jsonl（插件每晚采集的抖音作品数据）；频道、日期、形式：history/发布记录.jsonl（按标题对上）
 import { readText } from "./repo.js";
+import { metricsFromRaw } from "./shared.js";
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 const METRICS = [
   { k: "plays", name: "播放量", fmt: (v) => (v >= 10000 ? (v / 10000).toFixed(1) + "万" : String(Math.round(v))), better: "高" },
   { k: "bounce2s", name: "2秒跳出率", fmt: (v) => v.toFixed(1) + "%", better: "低", pct: true },
+  { k: "completion5s", name: "5秒完播率", fmt: (v) => v.toFixed(1) + "%", better: "高", pct: true },
   { k: "completion", name: "完播率", fmt: (v) => v.toFixed(1) + "%", better: "高", pct: true },
   { k: "avg_watch", name: "平均播放时长", fmt: (v) => (v >= 60 ? `${Math.floor(v / 60)}分${Math.round(v % 60)}秒` : `${Math.round(v)}秒`), better: "高" },
   { k: "comments", name: "评论", fmt: (v) => (Number.isInteger(v) ? String(v) : v.toFixed(1)), better: "高" },
@@ -40,7 +42,10 @@ async function pull() {
         if (m) date = `${year}-${String(m[1]).padStart(2, "0")}-${String(m[2]).padStart(2, "0")}`;
       }
       const name = (String(r.title).match(/^(.+?)\d{1,2}月\d{1,2}日/) || [])[1] || hx.channel || "其他";
-      return { ...r, date, channel: hx.channel || name, chName: name, format: hx.format || "classic" };
+      // 有原始数字时按最新的对应规则重新计算（旧版插件的对应有误，不用重新采集）；原始数据里没有的指标保留记录里的
+      const metrics = { ...(r.metrics || {}) };
+      if (r.raw) Object.assign(metrics, metricsFromRaw(r.raw));
+      return { ...r, metrics, date, channel: hx.channel || name, chName: name, format: hx.format || "classic" };
     }).filter((r) => r.date);
     $("stState").textContent = rows.length ? `共 ${rows.length} 期，最近一次采集 ${rows.map((r) => r.collected || "").sort().pop() || "—"}` : "还没有数据：开启下面的自动采集，或点「立即采集」";
     loaded = true;

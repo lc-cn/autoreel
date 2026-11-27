@@ -119,3 +119,40 @@ export const DEFAULTS = {
   paused: false,
 };
 
+
+
+// ───── 作品数据：把抖音页面数据里的数字字段对应成统一的指标 ─────
+// 先按确切字段名，再按规则模糊匹配；比例（0–1 的小数）统一换成百分数；按客户端拆分的字段（*_per_client.*）不用
+const EXACT = {
+  plays: ["play_count", "play_cnt", "vv"],
+  bounce2s: ["bounce_rate_2s", "bounce_2s_rate", "two_second_bounce_rate"],
+  completion5s: ["completion_rate_5s", "finish_rate_5s", "play_finish_rate_5s"],
+  completion: ["completion_rate", "finish_rate", "play_finish_rate", "complete_play_rate"],
+  avg_watch: ["average_play_duration", "avg_play_duration", "avg_play_time", "avg_view_time"],
+  likes: ["digg_count", "like_count", "digg_cnt"],
+  comments: ["comment_count", "comment_cnt"],
+  shares: ["share_count", "forward_count", "share_cnt"],
+  favorites: ["collect_count", "favorite_count", "collect_cnt"],
+  follows: ["new_fans_count", "fans_increase", "follow_count"],
+};
+const FUZZY = [["bounce2s", /bounce.*2s|2s.*bounce/i], ["completion5s", /(complet|finish).*5s|5s.*(complet|finish)/i], ["completion", /^(complet|finish)(?!.*(5s|2s|3s|_\d+s))/i],
+  ["avg_watch", /^(avg|average).*(dur|time)/i], ["plays", /^(play|view)_?(count|cnt|num)$/i], ["likes", /^(digg|like)/i], ["comments", /^comment/i],
+  ["shares", /^(share|forward)/i], ["favorites", /^(collect|favou?rite)/i]];
+export const RATE_KEYS = ["bounce2s", "completion5s", "completion"];
+export function metricsFromRaw(raw) {
+  const keys = Object.keys(raw || {}).filter((k) => !/_per_client\./.test(k));
+  const last = (k) => k.split(".").pop();
+  const out = {};
+  for (const [m, names] of Object.entries(EXACT)) {
+    const k = keys.find((x) => names.includes(last(x)));
+    if (k != null) out[m] = raw[k];
+  }
+  for (const [m, re] of FUZZY) {
+    if (m in out) continue;
+    const k = keys.find((x) => re.test(last(x)) && !/rank|percentile|ratio_of/i.test(x));
+    if (k != null) out[m] = raw[k];
+  }
+  for (const m of RATE_KEYS) if (typeof out[m] === "number" && out[m] <= 1) out[m] = Math.round(out[m] * 10000) / 100;
+  if (typeof out.avg_watch === "number") out.avg_watch = Math.round(out.avg_watch * 10) / 10;
+  return out;
+}

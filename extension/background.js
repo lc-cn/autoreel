@@ -2,6 +2,7 @@
 // 流程：每 5 分钟检查一次 → 到点的栏目从 GitHub 中转仓库下载视频 → 依次在抖音、视频号、快手的上传页里自动填写发布
 //      → 结果写回仓库 status.json，并按设置发浏览器通知 / Webhook。
 
+import { metricsFromRaw } from "./shared.js";
 import { PLATFORMS, ORDER, channelTag, MAX_ATTEMPTS, JOB_TIMEOUT_MS, CHUNK, DEFAULTS, PRESETS, newChannel, buildVars, buildRequest } from "./shared.js";
 
 // ───────── 存储 / 日志 ─────────
@@ -1012,9 +1013,7 @@ const STATS_URL = "https://creator.douyin.com/creator-micro/data-center/content"
 const STATS_FILE = "history/数据.jsonl";
 const STATS_DIAG = "history/数据采集诊断.json";
 const COLS = [["title", /^(作品|作品名称|视频|标题|作品标题|内容)$/], ["published", /发布时间|发布日期/], ["plays", /播放(量|次数)?$|^播放/], ["bounce2s", /2\s*[sS秒].*跳出/],
-  ["completion", /完播率/], ["avg_watch", /平均(播放|观看)时长|均播/], ["likes", /点赞/], ["comments", /评论/], ["shares", /分享/], ["favorites", /收藏/], ["follows", /涨粉|新增粉丝/], ["cover_ctr", /封面点击率/]];
-const KEYMAP = [["bounce2s", /bounce|2s|two_?sec/i], ["completion", /finish|complete/i], ["avg_watch", /avg.*(time|dur)|watch_?time|play_?dur/i], ["plays", /play|view|vv/i],
-  ["likes", /digg|like/i], ["comments", /comment/i], ["shares", /share|forward/i], ["favorites", /collect|favou?rite/i], ["follows", /fans|follow/i]];
+  ["completion5s", /5\s*[sS秒].*完播/], ["completion", /^(?!.*5\s*[sS秒]).*完播率/], ["avg_watch", /平均(播放|观看)时长|均播/], ["likes", /点赞/], ["comments", /评论/], ["shares", /分享/], ["favorites", /收藏/], ["follows", /涨粉|新增粉丝/], ["cover_ctr", /封面点击率/]];
 const sleepMs = (ms) => new Promise((r) => setTimeout(r, ms));
 const normTitle = (t) => String(t || "").replace(/\s+/g, "").replace(/[｜|].*$/, (m) => m); // 保留整段，比较时去空白
 
@@ -1105,8 +1104,9 @@ function rowsFromJson(bodies, titles) {
     if (Array.isArray(o)) return o.forEach((x) => visit(x, depth + 1));
     const strs = Object.values(o).filter((v) => typeof v === "string");
     const hit = want.find(([, n]) => strs.some((v) => { const nv = normTitle(v); return nv && (nv === n || n.endsWith(nv) || nv.startsWith(n)); }));
-    if (hit && !found.has(hit[0])) {
-      const raw = {};
+    if (hit) {
+      const prev = found.get(hit[0]);
+      const raw = prev ? prev.raw : {};
       const flat = (x, pre, d) => {
         if (!x || typeof x !== "object" || d > 3) return;
         for (const [k, v] of Object.entries(x)) {
@@ -1117,12 +1117,7 @@ function rowsFromJson(bodies, titles) {
         }
       };
       flat(o, "", 0);
-      const metrics = {};
-      for (const [k, re] of KEYMAP) {
-        const key = Object.keys(raw).find((x) => re.test(x.split(".").pop()) && !/rate_?rank|percentile/i.test(x));
-        if (key != null && !(k in metrics)) metrics[k] = raw[key];
-      }
-      found.set(hit[0], { title: hit[0], metrics, raw, source: "data" });
+      found.set(hit[0], { title: hit[0], metrics: metricsFromRaw(raw), raw, source: "data" });
       if (shapes.length < 3) shapes.push(Object.keys(raw).slice(0, 80));
       return;
     }
@@ -1195,7 +1190,12 @@ async function collectStats({ manual = false } = {}) {
       for (const l of cur.text.split("\n")) {
         try { const o = JSON.parse(l); map.set(normTitle(o.title), o); } catch (_) {}
       }
-      for (const r of rows) map.set(normTitle(r.title), { title: r.title, published: r.published || (map.get(normTitle(r.title)) || {}).published || "", collected: result.time, source, metrics: r.metrics, ...(r.raw ? { raw: r.raw } : { cells: r.cells }) });
+      for (const r of rows) {
+        const old = map.get(normTitle(r.title)) || {};
+        const metrics = { ...(old.metrics || {}) };
+        for (const [k, v] of Object.entries(r.metrics || {})) if (v != null) metrics[k] = v;
+        map.set(normTitle(r.title), { title: r.title, published: r.published || old.published || "", collected: result.time, source, metrics, ...(r.raw ? { raw: r.raw } : { cells: r.cells }) });
+      }
       const text = [...map.values()].map((o) => JSON.stringify(o)).join("\n") + "\n";
       await repoPut(STATS_FILE, text, `插件：作品数据 ${rows.length} 条`, cur.sha);
     }
@@ -1258,4 +1258,4 @@ chrome.alarms.onAlarm.addListener((a) => {
 });
 
 // 供自动化测试调用（不影响正常使用）
-self.__kb = { collectStats, rowsFromTable, rowsFromJson, parseNum, tick, publishOne, keepAlive, fetchPackage, recordResult, beijing, idbPut, newChannel, startLogin, accountFor, targets, detectIdentity, checkIdentity, getChannels, alreadyPublished };
+self.__kb = { collectStats, rowsFromTable, rowsFromJson, parseNum, metricsFromRaw, tick, publishOne, keepAlive, fetchPackage, recordResult, beijing, idbPut, newChannel, startLogin, accountFor, targets, detectIdentity, checkIdentity, getChannels, alreadyPublished };
